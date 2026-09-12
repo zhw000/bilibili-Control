@@ -41,7 +41,7 @@ xcodegen generate
 open BiliRemote.xcodeproj
 ```
 
-GitHub Actions 工作流分别构建 Windows/Chrome 和 iOS。下载 `BiliRemote-iOS-unsigned` 与 `BiliRemote-Windows-and-Chrome` 构建产物；无需向 GitHub 上传签名证书。`scripts/verify-ipa.py` 会检查 IPA 的真机平台、arm64 可执行文件和权限说明。
+GitHub Actions 工作流分别构建 Windows/Chrome 和 iOS。下载 `BiliRemote-iOS-unsigned` 和 `BiliRemote-Windows-Installer` 即可；安装程序内含扩展。`BiliRemote-Chrome` 提供独立扩展，`BiliRemote-Windows-Portable` 是可选便携包。无需向 GitHub 上传签名证书。`scripts/verify-ipa.py` 会检查 IPA 的真机平台、arm64 可执行文件和权限说明。
 
 ## 排查
 

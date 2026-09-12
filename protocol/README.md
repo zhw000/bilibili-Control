@@ -10,6 +10,8 @@ The host listens on its selected IPv4 interface, default port `33391`, using TLS
 
 ## Envelopes
 
+WebSocket JSON requests use UTF-8 **text** frames. Binary request frames are rejected. Chrome's stdin/stdout transport separately uses length-prefixed UTF-8 bytes.
+
 Request: `{ "v": 1, "id": "unique string", "method": "player.command", "params": { "action": "seekBy", "value": 10 } }`
 
 Success: `{ "v": 1, "id": "same string", "ok": true, "result": {} }`

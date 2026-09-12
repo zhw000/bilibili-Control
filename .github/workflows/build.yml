@@ -29,11 +29,20 @@ jobs:
         run: if (-not (Test-Path artifacts/BiliRemote-Setup-0.1.0.exe)) { throw 'Windows installer missing' }
       - uses: actions/upload-artifact@v4
         with:
-          name: BiliRemote-Windows-and-Chrome
-          path: |
-            artifacts/BiliRemote-Setup-*.exe
-            artifacts/BiliRemote-Windows.zip
-            artifacts/BiliRemote-Chrome.zip
+          name: BiliRemote-Windows-Installer
+          path: artifacts/BiliRemote-Setup-*.exe
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BiliRemote-Chrome
+          path: artifacts/BiliRemote-Chrome.zip
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BiliRemote-Windows-Portable
+          path: artifacts/BiliRemote-Windows.zip
           retention-days: 14
           if-no-files-found: error
   ios:

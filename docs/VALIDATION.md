@@ -2,13 +2,26 @@
 
 ## 自动检查
 
-实施期间更新此文件，区分源码检查、模拟设备集成测试和实际设备验收。
+记录日期：2026-09-12。以下验证使用独立测试环境，不代表 iPhone 真机验收。
 
-- Windows 工程：已完成 Debug 编译，零警告、零错误。
-- 核心测试：14 项通过，覆盖时间解析、URL 限制、重复命令、跨页去重、重复结束事件、多 P 与重启不自动播放。
-- Chrome 扩展：TypeScript 类型检查及 6 项 DOM 解析测试通过，构建成功。
-- iOS：Swift 源码已实现，等待 macOS 构建与 XCTest。
-- 传输层：待测试。
+- Windows 工程：.NET 10 Release 编译通过，零警告、零错误；云端已生成含运行时的 x64 安装程序。
+- 核心测试：17 项通过，覆盖时间解析、URL 限制、重复命令、跨页去重、重复结束事件、多 P、失效视频跳过、目录失败释放控制权与重启不自动播放。
+- Chrome 扩展：TypeScript 类型检查及 12 项 DOM 测试通过，构建成功。覆盖新版搜索、UP 主、按钮式合集入口、分页、多 P、弹幕与网页全屏状态。
+- Windows 传输：16 项集成检查通过。使用真正的 TLS/WSS 服务和当前用户管道，手机及浏览器为模拟端；覆盖配对、一次性凭据、鉴权、去重、跨页队列、重连与解绑。
+- Native Messaging：真正运行发布后的通信宿主，验证错误来源拒绝、中文 UTF-8 字节长度、双向 stdin/stdout 帧和管道往返、EOF 退出。
+- iOS：Xcode 26.6 编译通过，iPhone 17 Pro 模拟器的 3 项协议、2 项网络、2 项界面测试全部通过。
+- iOS 网络：运行 App 的 URLSession 代码，对本机 HTTPS/WSS 测试服务完成指纹配对、错误证书拒绝、文本 JSON 控制、错误回传与重连。此服务为测试端，未连接 Windows 或真实浏览器。
+- IPA：云端和下载后均确认 `iPhoneOS`、arm64 Mach-O、最低 iOS 17.0、相机与局域网权限说明；未配置虚假后台音频。
+- 界面：已检查配对、发现、播放、双音量和队列的模拟器截图。播放截图使用显式测试数据，Release 不启用测试预览。
+- 真实网页观察：在当前 Chrome 检查了视频/UP 主搜索、UP 主合集入口、64 项合集翻页与 185 P 视频 DOM，并修正适配器。这不是扩展驱动的端到端验收。
+
+网络测试记录：[构建 34679614311](https://github.com/zhw000/bilibili-Control/actions/runs/34679614311)。最终二进制对应构建与 SHA-256 见交付目录。
+
+## 30 分钟稳定性测试
+
+Windows 传输层 1,800 秒测试已通过，包含 16 项集成检查。测试每秒回传模拟播放器状态、每十秒读取完整快照、每分钟断开并重新连接模拟手机。记录为 `ee8ed2060f154ee6a196d9f129ee6acf`。
+
+长时间测试使用隔离复制的 `0390988` 构建；后续队列错误恢复修正已通过核心测试和最终版本的短时集成测试。它不模拟真实 iPhone 的系统休眠、Wi-Fi 或 Chrome 渲染进程。
 
 ## 必须在实际设备完成
 
@@ -18,3 +31,15 @@
 - 连续 30 分钟运行，包括手机锁屏/断网、网页刷新和队列切换。
 
 模拟测试或成功编译不能替代以上实际设备验收。
+
+## 重现自动测试
+
+Windows 执行 `./scripts/build-windows.ps1`，包含核心、DOM、传输和通信宿主进程测试。单独运行长时间测试：
+
+```powershell
+dotnet run --project tests/BiliRemote.Integration -c Release -- --soak-seconds 1800
+```
+
+结果保存于 `artifacts/integration/<测试编号>/result.json`；使用独立数据目录与随机本机端口，不修改已配对设备，不向真实播放器发命令。
+
+macOS 上运行网络测试前，执行 `python3 scripts/ios-transport-fixture.py --prepare`，再生成 Xcode 工程，并在另一个终端运行 `python3 scripts/ios-transport-fixture.py`。临时证书与测试配置保存在 Git 忽略的目录内。
