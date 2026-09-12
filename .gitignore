@@ -14,3 +14,4 @@ TestResults/
 .vs/
 *.log
 ios/BiliRemoteTests/fixture.json
+__pycache__/

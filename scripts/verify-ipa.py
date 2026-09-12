@@ -9,7 +9,7 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
     assert len(infos) == 1, "Expected exactly one iOS application"
     info = plistlib.loads(archive.read(infos[0]))
     assert "iPhoneOS" in info["CFBundleSupportedPlatforms"], "Simulator app cannot be signed for a device"
-    executable = infos[0].removesuffix("Info.plist") + info["CFBundleExecutable"]
+    executable = infos[0][:-len("Info.plist")] + info["CFBundleExecutable"]
     header = archive.read(executable)[:8]
     magic, cpu = struct.unpack("<II", header)
     assert magic == 0xFEEDFACF and cpu == 0x0100000C, "Expected an arm64 Mach-O executable"

@@ -3,17 +3,19 @@ import {bounded,numericId,PageResult,RemoteError,Request,urlAllowed} from './typ
 const HOST='com.biliremote.bridge';
 let port:chrome.runtime.Port|undefined,targetId:number|undefined,catalogId:number|undefined,managed=false;
 let currentBinding:Record<string,unknown>|undefined;
+let originalAutoplay:boolean|undefined;
 let catalogSerial:Promise<unknown>=Promise.resolve();
 const collectionRoutes=new Map<string,string>();
 const windowStates=new Map<number,NonNullable<chrome.windows.UpdateInfo['state']>>();
-const initialized=chrome.storage.session.get(['targetId','catalogId','managed','binding']).then(saved=>{targetId=typeof saved.targetId==='number'?saved.targetId:undefined;catalogId=typeof saved.catalogId==='number'?saved.catalogId:undefined;managed=saved.managed===true;currentBinding=saved.binding&&typeof saved.binding==='object'?saved.binding as Record<string,unknown>:undefined});
-async function remember(){await chrome.storage.session.set({targetId:targetId??null,catalogId:catalogId??null,managed,binding:currentBinding??null})}
+const initialized=chrome.storage.session.get(['targetId','catalogId','managed','binding','originalAutoplay']).then(saved=>{targetId=typeof saved.targetId==='number'?saved.targetId:undefined;catalogId=typeof saved.catalogId==='number'?saved.catalogId:undefined;managed=saved.managed===true;currentBinding=saved.binding&&typeof saved.binding==='object'?saved.binding as Record<string,unknown>:undefined;originalAutoplay=typeof saved.originalAutoplay==='boolean'?saved.originalAutoplay:undefined});
+async function remember(){await chrome.storage.session.set({targetId:targetId??null,catalogId:catalogId??null,managed,binding:currentBinding??null,originalAutoplay:originalAutoplay??null})}
+function bindingParams(){return {...currentBinding,originalAutoplay}}
 function send(event:string,data:unknown){try{port?.postMessage({v:1,event,data})}catch{}}
 async function releaseDisconnectedSession(){
   await initialized;
   managed=false;currentBinding=undefined;
-  await remember();
   if(targetId&&await tabExists(targetId))await content(targetId,'player.manage',{enabled:false});
+  originalAutoplay=undefined;await remember();
 }
 function connect(){
   if(port)return;
@@ -64,7 +66,7 @@ async function openVideo(params:Record<string,unknown>){
   const url=new URL(`https://www.bilibili.com/video/${video.bvid}/`);url.searchParams.set('p',String(Math.floor(bounded(params.part??1,1,10000))));
   const id=await target();currentBinding={playbackId:params.playbackId,bvid:video.bvid,managed,time:params.time??0};await remember();
   await navigation(id,url.href);
-  return content(id,'player.bind',currentBinding);
+  return content(id,'player.bind',bindingParams());
 }
 async function handle(req:Request):Promise<unknown>{
   await initialized;if(req.v!==1||!req.id)throw new RemoteError('version_mismatch','协议版本不匹配');const p=req.params??{};
@@ -76,7 +78,7 @@ async function handle(req:Request):Promise<unknown>{
     case 'creator.collections':return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/lists`,'collections',Math.floor(bounded(p.page??1,1,10000))));
     case 'collection.videos':return serializedCatalog(async()=>catalog(await collectionUrl(String(p.url??'')),'videos',Math.floor(bounded(p.page??1,1,10000))));
     case 'player.open':return openVideo(p);
-    case 'player.manage':managed=Boolean(p.enabled);if(currentBinding)currentBinding.managed=managed;await remember();return targetId&&await tabExists(targetId)?content(targetId,'player.manage',{enabled:managed}):{};
+    case 'player.manage':{managed=Boolean(p.enabled);if(currentBinding)currentBinding.managed=managed;const result=targetId&&await tabExists(targetId)?await content(targetId,'player.manage',{enabled:managed}):{};if(!managed)originalAutoplay=undefined;await remember();return result;}
     case 'player.state':return targetId&&await tabExists(targetId)?content(targetId,'player.state'):{};
     case 'player.command':{
       const id=await target();if(p.action==='fullscreen'){
@@ -91,7 +93,8 @@ async function handle(req:Request):Promise<unknown>{
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message.popup){if(message.popup==='connect')connect();respond({connected:!!port,targetId});return}
   if(sender.tab?.id!==targetId)return;
-  if(message.event==='content.ready'){if(currentBinding)void content(targetId!,'player.attach',currentBinding).catch(()=>{});return;}
+  if(message.event==='player.autoplayCaptured'){if(managed&&originalAutoplay===undefined&&typeof message.data?.value==='boolean'){originalAutoplay=message.data.value;void remember()}return;}
+  if(message.event==='content.ready'){if(currentBinding)void content(targetId!,'player.attach',bindingParams()).catch(()=>{});return;}
   if(message.event==='player.partEnded'&&managed&&currentBinding&&message.data?.playbackId===currentBinding.playbackId){
     const state=message.data;openVideo({video:{url:state.url,bvid:state.bvid},part:state.part+1,time:0,playbackId:state.playbackId}).catch(error=>send('player.error',{...state,errorCode:error.code??'player_error',errorMessage:error.message}));return;
   }
@@ -101,7 +104,7 @@ chrome.tabs.onRemoved.addListener(id=>{if(id===targetId){targetId=undefined;curr
 chrome.tabs.onUpdated.addListener((id,change)=>{
   if(id!==targetId||!currentBinding)return;
   if(change.url&&change.url.match(/\/video\/(BV[0-9A-Za-z]+)/)?.[1]!==currentBinding.bvid){currentBinding=undefined;managed=false;void remember();send('target.navigated',{});return;}
-  if(change.status==='complete')void content(id,'player.attach',currentBinding).catch(()=>{});
+  if(change.status==='complete')void content(id,'player.attach',bindingParams()).catch(()=>{});
 });
 chrome.runtime.onInstalled.addListener(()=>{connect();void chrome.alarms.create('reconnect',{periodInMinutes:.5})});
 chrome.runtime.onStartup.addListener(connect);chrome.alarms.onAlarm.addListener(connect);connect();

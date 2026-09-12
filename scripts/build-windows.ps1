@@ -22,6 +22,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Host publish failed' }
     & $Dotnet publish desktop/BiliRemote.Native -c Release -r win-x64 --self-contained true -o artifacts/native -p:DebugType=None -p:DebugSymbols=false
     if ($LASTEXITCODE -ne 0) { throw 'Native host publish failed' }
+    if (-not $SkipTests) {
+        & $Dotnet run --project tests/BiliRemote.Integration -c Release --no-build -- --native artifacts/native/BiliRemote.Native.exe
+        if ($LASTEXITCODE -ne 0) { throw 'Native Messaging executable tests failed' }
+    }
     New-Item -ItemType Directory -Force artifacts/windows/native, artifacts/windows/extension | Out-Null
     Copy-Item -Path artifacts/native/* -Destination artifacts/windows/native -Recurse -Force
     Copy-Item -Path extension/dist/* -Destination artifacts/windows/extension -Recurse -Force

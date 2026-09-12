@@ -10,6 +10,8 @@ using BiliRemote.Core;
 using BiliRemote.Desktop;
 using BiliRemote.Host;
 
+if (args.Length == 2 && args[0] == "--native") { await NativeFramingTest.Run(args[1]); return; }
+
 var root = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "artifacts", "integration", Guid.NewGuid().ToString("N")));
 Directory.CreateDirectory(root);
 var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();

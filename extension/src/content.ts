@@ -8,9 +8,13 @@ function video():HTMLVideoElement|null{return document.querySelector<HTMLVideoEl
 function emit(event:string,data:unknown){chrome.runtime.sendMessage({event,data}).catch(()=>{})}
 function snapshot(){const v=video();return {bvid:location.pathname.match(/BV[\w]+/)?.[0]??'',title:document.querySelector('h1')?.textContent?.trim()??document.title.replace(/_哔哩哔哩.*$/,''),url:location.href,currentTime:Number.isFinite(v?.currentTime)?v!.currentTime:0,duration:Number.isFinite(v?.duration)?v!.duration:0,paused:v?.paused??true,ended:v?.ended??false,...partInfo(),volume:v?.volume??1,muted:v?.muted??false,rate:v?.playbackRate??1,danmaku:danmakuOn(),fullscreen:isWebFullscreen(),playbackId}}
 function autoplayControl():HTMLElement|null{return document.querySelector('.next-play input,.auto-play input,.video-pod__auto-play input,.bpx-player-ctrl-setting-autoplay input,.bpx-player-ctrl-setting-autoplay .bui-switch-input')}
-function manage(value:boolean){
+function manage(value:boolean,original?:unknown){
   const control=autoplayControl();
-  if(value&&!managed&&control instanceof HTMLInputElement){previousAutoplay=control.checked;if(control.checked)control.click()}
+  if(value&&typeof original==='boolean'&&previousAutoplay===undefined)previousAutoplay=original;
+  if(value&&control instanceof HTMLInputElement){
+    if(previousAutoplay===undefined){previousAutoplay=control.checked;emit('player.autoplayCaptured',{value:previousAutoplay})}
+    if(control.checked)control.click();
+  }
   if(!value&&managed&&control instanceof HTMLInputElement&&previousAutoplay!==undefined&&control.checked!==previousAutoplay)control.click();
   managed=value;if(!value){playbackId=undefined;previousAutoplay=undefined}
 }
@@ -26,8 +30,8 @@ function visiblePlayerError():RemoteError|undefined {
   return new RemoteError(/不存在|已删除|失效|不见了|被删除/.test(error)?'video_unavailable':/登录|验证/.test(error)?'verification_required':'player_error',error.slice(0,200));
 }
 async function waitVideo():Promise<HTMLVideoElement>{for(let i=0;i<100;i++){const error=visiblePlayerError();if(error)throw error;const v=video();if(v&&v.readyState>=1)return v;await new Promise(resolve=>setTimeout(resolve,200))}throw new RemoteError('player_not_ready','播放器尚未就绪，请检查电脑网页')}
-function attach(params:Record<string,unknown>){playbackId=String(params.playbackId??'');manage(Boolean(params.managed));endedSent=false;lastError='';return snapshot()}
-async function bind(params:Record<string,unknown>){attach(params);const v=await waitVideo();if(typeof params.time==='number')v.currentTime=Math.min(Math.max(0,params.time),v.duration||params.time);try{await v.play()}catch{throw new RemoteError('autoplay_blocked','浏览器阻止了自动播放，请在电脑视频区域点击一次播放，再从手机继续')}emit('player.changed',snapshot());return snapshot()}
+function attach(params:Record<string,unknown>){playbackId=String(params.playbackId??'');manage(Boolean(params.managed),params.originalAutoplay);endedSent=false;lastError='';return snapshot()}
+async function bind(params:Record<string,unknown>){attach(params);const v=await waitVideo();manage(managed,params.originalAutoplay);if(typeof params.time==='number')v.currentTime=Math.min(Math.max(0,params.time),v.duration||params.time);try{await v.play()}catch{throw new RemoteError('autoplay_blocked','浏览器阻止了自动播放，请在电脑视频区域点击一次播放，再从手机继续')}emit('player.changed',snapshot());return snapshot()}
 function fillPlayer(value:boolean){
   const control=document.querySelector<HTMLElement>('.bpx-player-ctrl-web,.bilibili-player-video-web-fullscreen');
   if(isWebFullscreen()!==value&&control)control.click();
@@ -55,10 +59,11 @@ chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
 });
 function report(){
   if(location.hostname!=='www.bilibili.com'||!location.pathname.startsWith('/video/'))return;
-  const v=video();if(v){emit('player.changed',snapshot());if(!v.ended)endedSent=false}
+  const v=video();if(v){if(managed)manage(true);emit('player.changed',snapshot());if(!v.ended)endedSent=false}
   const error=document.querySelector('.error-panel,.bpx-player-error-message,.error-container')?.textContent?.trim()??'';
   if(error&&error!==lastError){lastError=error;const unavailable=/不存在|已删除|失效|不见了|被删除/.test(error);emit('player.error',{...snapshot(),errorCode:unavailable?'video_unavailable':/登录|验证/.test(error)?'verification_required':'player_error',errorMessage:error.slice(0,200)})}
 }
 setInterval(report,1000);
+window.addEventListener('pagehide',()=>manage(false));
 for(const event of ['play','pause','seeked','volumechange','ratechange','loadedmetadata'])document.addEventListener(event,()=>{if(video())report()},true);
 chrome.runtime.sendMessage({event:'content.ready'}).catch(()=>{});
