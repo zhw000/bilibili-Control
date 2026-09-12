@@ -4,6 +4,7 @@ const HOST='com.biliremote.bridge';
 let port:chrome.runtime.Port|undefined,targetId:number|undefined,catalogId:number|undefined,managed=false;
 let currentBinding:Record<string,unknown>|undefined;
 let catalogSerial:Promise<unknown>=Promise.resolve();
+const collectionRoutes=new Map<string,string>();
 const windowStates=new Map<number,NonNullable<chrome.windows.UpdateInfo['state']>>();
 const initialized=chrome.storage.session.get(['targetId','catalogId','managed','binding']).then(saved=>{targetId=typeof saved.targetId==='number'?saved.targetId:undefined;catalogId=typeof saved.catalogId==='number'?saved.catalogId:undefined;managed=saved.managed===true;currentBinding=saved.binding&&typeof saved.binding==='object'?saved.binding as Record<string,unknown>:undefined});
 async function remember(){await chrome.storage.session.set({targetId:targetId??null,catalogId:catalogId??null,managed,binding:currentBinding??null})}
@@ -36,6 +37,21 @@ async function catalog(url:string,kind:string,page:number,order:string='newest')
   return {...result,items:order==='oldest'?[...result.items].reverse():result.items,page,nextPage:page<result.totalPages?page+1:undefined};
 }
 function serializedCatalog(job:()=>Promise<unknown>){const result=catalogSerial.then(job,job);catalogSerial=result.catch(()=>{});return result}
+async function collectionUrl(value:string):Promise<string>{
+  if(!urlAllowed(value))throw new RemoteError('invalid_url','合集地址无效');
+  const cached=collectionRoutes.get(value);if(cached)return cached;
+  const url=new URL(value),title=url.searchParams.get('biliremoteCollection');if(!title)return value;
+  const mid=url.pathname.match(/^\/(\d+)\/lists$/)?.[1];if(!mid)throw new RemoteError('invalid_url','合集来源无效');
+  const page=bounded(Number(url.searchParams.get('biliremotePage')),1,10000),index=bounded(Number(url.searchParams.get('biliremoteIndex')),0,1000);
+  await catalog(`https://space.bilibili.com/${mid}/lists`,'collections',page);
+  await content(catalogId!,'catalog.openCollection',{title,index});
+  for(let attempt=0;attempt<80;attempt++){
+    const tab=await chrome.tabs.get(catalogId!);
+    if(tab.url&&urlAllowed(tab.url)&&/\/lists\/\d+/.test(new URL(tab.url).pathname)){collectionRoutes.set(value,tab.url);return tab.url}
+    await new Promise(resolve=>setTimeout(resolve,200));
+  }
+  throw new RemoteError('collection_changed','合集没有成功打开，请刷新 UP 主主页后重试');
+}
 async function openVideo(params:Record<string,unknown>){
   const video=params.video as {url?:string;bvid?:string}|undefined;
   if(!video?.url||!urlAllowed(video.url)||!/^BV[0-9A-Za-z]+$/.test(video.bvid??''))throw new RemoteError('invalid_video','视频地址无效');
@@ -52,7 +68,7 @@ async function handle(req:Request):Promise<unknown>{
     case 'search':{const query=String(p.query??'').trim();if(!query||query.length>200)throw new RemoteError('invalid_request','搜索词必须为 1～200 字');const kind=p.kind==='creators'?'creators':'videos';const url=`https://search.bilibili.com/${kind==='creators'?'upuser':'video'}?keyword=${encodeURIComponent(query)}`;return serializedCatalog(()=>catalog(url,kind,Math.floor(bounded(p.page??1,1,10000))))}
     case 'creator.videos':return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/upload/video`,'videos',Math.floor(bounded(p.page??1,1,10000)),p.order==='oldest'?'oldest':'newest'));
     case 'creator.collections':return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/lists`,'collections',Math.floor(bounded(p.page??1,1,10000))));
-    case 'collection.videos':return serializedCatalog(()=>catalog(String(p.url??''),'videos',Math.floor(bounded(p.page??1,1,10000))));
+    case 'collection.videos':return serializedCatalog(async()=>catalog(await collectionUrl(String(p.url??'')),'videos',Math.floor(bounded(p.page??1,1,10000))));
     case 'player.open':return openVideo(p);
     case 'player.manage':managed=Boolean(p.enabled);if(currentBinding)currentBinding.managed=managed;await remember();return targetId&&await tabExists(targetId)?content(targetId,'player.manage',{enabled:managed}):{};
     case 'player.state':return targetId&&await tabExists(targetId)?content(targetId,'player.state'):{};

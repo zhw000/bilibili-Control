@@ -1,4 +1,4 @@
-import {readCatalog,turnPage} from './catalog';
+import {openCollection,readCatalog,turnPage} from './catalog';
 import {bounded,RemoteError} from './types';
 
 let managed=false,playbackId:string|undefined,webFullscreen=false,endedSent=false,lastError='';
@@ -55,7 +55,7 @@ async function command(params:Record<string,unknown>){
   emit('player.changed',snapshot());return snapshot();
 }
 chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
-  (async()=>{switch(message.method){case 'catalog.read':return readCatalog(message.params.kind);case 'catalog.page':await turnPage(message.params.page,message.params.kind);return readCatalog(message.params.kind);case 'player.bind':return bind(message.params);case 'player.attach':return attach(message.params);case 'player.manage':manage(Boolean(message.params.enabled));return snapshot();case 'player.command':return command(message.params);case 'player.state':return snapshot();default:throw new RemoteError('unknown_method','未知扩展操作')}})().then(result=>respond({ok:true,result}),error=>respond({ok:false,error:{code:error.code??'extension_error',message:error.message}}));
+  (async()=>{switch(message.method){case 'catalog.read':return readCatalog(message.params.kind);case 'catalog.page':await turnPage(message.params.page,message.params.kind);return readCatalog(message.params.kind);case 'catalog.openCollection':return openCollection(message.params.title,message.params.index);case 'player.bind':return bind(message.params);case 'player.attach':return attach(message.params);case 'player.manage':manage(Boolean(message.params.enabled));return snapshot();case 'player.command':return command(message.params);case 'player.state':return snapshot();default:throw new RemoteError('unknown_method','未知扩展操作')}})().then(result=>respond({ok:true,result}),error=>respond({ok:false,error:{code:error.code??'extension_error',message:error.message}}));
   return true;
 });
 function report(){

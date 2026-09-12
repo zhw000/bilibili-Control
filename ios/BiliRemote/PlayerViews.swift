@@ -2,8 +2,10 @@ import SwiftUI
 
 struct PlayerView: View {
     @EnvironmentObject private var model: RemoteModel
-    @State private var seeking = false, seekValue: Double = 0
-    @State private var showTime = false, timeText = ""
+    @State private var seeking = false
+    @State private var seekValue: Double = 0
+    @State private var showTime = false
+    @State private var timeText = ""
     private var player: PlayerState { model.snapshot.player }
     var body: some View {
         ScrollView {
@@ -48,7 +50,8 @@ struct VolumeControl: View {
     let title: String, subtitle: String
     let value: Double, muted: Bool, enabled: Bool
     let set: (Double) -> Void, mute: () -> Void
-    @State private var editing = false, localValue: Double = 0
+    @State private var editing = false
+    @State private var localValue: Double = 0
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack { VStack(alignment: .leading, spacing: 3) { Text(title).font(.subheadline.weight(.semibold)); Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1) }; Spacer(); Text("\(Int((editing ? localValue : value) * 100))%").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }

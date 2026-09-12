@@ -5,9 +5,9 @@ export function durationSeconds(text:string):number|undefined {
   return match?match[1].split(':').reduce((sum,n)=>sum*60+Number(n),0):undefined;
 }
 const txt=(node:Element|null)=>node?.textContent?.replace(/\s+/g,' ').trim()??'';
-const outsideHeader=(a:Element)=>!a.closest('header,nav,.bili-header,.bili-header__bar,.international-header,.header-channel,.nav-bar');
+const outsideHeader=(a:Element)=>!a.closest('header,nav,footer,.bili-header,.bili-header__bar,.international-header,.header-channel,.nav-bar,.bili-footer,.international-footer,.footer,.footer-wrp');
 function card(a:Element):Element {
-  return a.closest('.bili-video-card,.bili-cover-card,.video-card,.small-item,.upload-video-card,.bili-user-profile-view,.bili-user-card,.user-item,.user-card,.video-list-item,.list-item')??a.parentElement?.parentElement??a;
+  return a.closest('.bili-video-card')??a.closest('.bili-cover-card,.video-card,.small-item,.upload-video-card,.bili-user-profile-view,.bili-user-card,.b-user-info-card,.user-item,.user-card,.video-list-item,.list-item')??a.parentElement?.parentElement??a;
 }
 function imageOf(node:Element):string|undefined {
   const image=node.querySelector('img');const source=image?.getAttribute('src')||image?.getAttribute('data-src');
@@ -19,11 +19,12 @@ export function videoItems(root:ParentNode=document):VideoItem[] {
   for(const anchor of root.querySelectorAll<HTMLAnchorElement>('a[href*="/video/BV"]')){
     if(!outsideHeader(anchor))continue;
     const bvid=anchor.href.match(/\/video\/(BV[0-9A-Za-z]+)/)?.[1];if(!bvid)continue;
-    const row=card(anchor);const titleAnchor=row.querySelector<HTMLAnchorElement>('a[title],h3 a,.bili-video-card__info--tit a,.bili-cover-card__info-title,a.title');
+    const row=card(anchor);const titleAnchor=row.querySelector<HTMLAnchorElement>('a[title],h3 a,.bili-video-card__title a,.bili-video-card__info--tit a,.bili-cover-card__info-title,a.title');
     const title=titleAnchor?.getAttribute('title')||txt(titleAnchor)||anchor.getAttribute('title')||txt(anchor);
     if(!title||/^[\d\s万亿.:]+$/.test(title))continue;
     const owner=row.querySelector<HTMLAnchorElement>('a[href*="space.bilibili.com/"]');
-    const result:VideoItem={bvid,title,url:`https://www.bilibili.com/video/${bvid}/`,cover:imageOf(row),duration:durationSeconds(txt(row)),creatorId:owner?.href.match(/space\.bilibili\.com\/(\d+)/)?.[1],creatorName:txt(owner)};
+    const durationLabel=[...row.querySelectorAll('.bili-video-card__stats__duration,.bili-cover-card__stat span')].map(txt).find(s=>/^\d{1,3}:\d{2}(?::\d{2})?$/.test(s));
+    const result:VideoItem={bvid,title,url:`https://www.bilibili.com/video/${bvid}/`,cover:imageOf(row),duration:durationSeconds(durationLabel??txt(row)),creatorId:owner?.href.match(/space\.bilibili\.com\/(\d+)/)?.[1],creatorName:txt(owner).replace(/\s*[·•]\s*.*$/,'')};
     const old=found.get(bvid);if(!old||result.title.length>old.title.length)found.set(bvid,{...old,...result});
   }
   return [...found.values()];
@@ -33,7 +34,7 @@ export function creatorItems(root:ParentNode=document):CreatorItem[]{
   for(const anchor of root.querySelectorAll<HTMLAnchorElement>('a[href*="space.bilibili.com/"]')){
     if(!outsideHeader(anchor))continue;
     const id=anchor.href.match(/space\.bilibili\.com\/(\d+)(?:[/?#]|$)/)?.[1];if(!id)continue;
-    const row=card(anchor);const name=anchor.getAttribute('title')||txt(row.querySelector('.bili-user-profile-view__info__uname,.username,.name,.bili-user-card__info__name'))||txt(anchor);
+    const row=card(anchor);const name=anchor.getAttribute('title')||txt(row.querySelector('.bili-user-profile-view__info__uname,.username,.name,.bili-user-card__info__name,h2 a'))||txt(anchor);
     if(!name||name.length>80||/发消息|粉丝数|关注数|收藏/.test(name))continue;
     if(!found.has(id))found.set(id,{id,name,url:`https://space.bilibili.com/${id}`,avatar:imageOf(row),description:txt(row).slice(0,240)});
   }
@@ -47,7 +48,26 @@ export function collectionItems(root:ParentNode=document):CollectionItem[]{
     if(!id)continue;const row=card(anchor);const title=anchor.getAttribute('title')||txt(row.querySelector('[title],h3,.title'))||txt(anchor);
     if(title&&!found.has(href))found.set(href,{id,title,url:href,cover:imageOf(row),count:Number(txt(row).match(/(\d+)\s*个视频/)?.[1])||undefined});
   }
+  // New space pages expose buttons instead of links. Retain a navigation locator;
+  // resolve its canonical URL only when that collection is opened.
+  const mid=location.pathname.match(/^\/(\d+)\/lists/)?.[1];
+  if(mid){
+    const page=Number(txt(document.querySelector('.vui_pagenation--btn-num.vui_button--active,.be-pager-item-active')))||1;
+    [...root.querySelectorAll('.video-list__header')].forEach((header,index)=>{
+      const title=txt(header.querySelector('.video-list__title'));if(!/^(合集|系列)[·・]/.test(title))return;
+      const link=new URL(`https://space.bilibili.com/${mid}/lists`);link.searchParams.set('biliremoteCollection',title);link.searchParams.set('biliremotePage',String(page));link.searchParams.set('biliremoteIndex',String(index));
+      found.set(link.href,{id:`${mid}:${page}:${index}:${title}`,title:title.replace(/^(合集|系列)[·・]/,''),url:link.href,cover:imageOf(header.parentElement??header),count:Number(txt(header.querySelector('.video-list__desc')).match(/\d+/)?.[0])||undefined});
+    });
+  }
   return [...found.values()];
+}
+export function openCollection(title:string,index:number):{started:boolean}{
+  const headers=[...document.querySelectorAll('.video-list__header')];
+  const candidate=headers[index];
+  const header=candidate&&txt(candidate.querySelector('.video-list__title'))===title?candidate:headers.find(e=>txt(e.querySelector('.video-list__title'))===title);
+  const button=header&&[...header.querySelectorAll<HTMLButtonElement>('button')].find(b=>txt(b).includes('查看更多'));
+  if(!button)throw new RemoteError('collection_changed','合集列表已变化，请返回 UP 主主页刷新后重试');
+  button.click();return {started:true};
 }
 export function pagination(root:ParentNode=document):{totalPages:number;total?:number}{
   const body=txt(root instanceof Document?root.body:root as Element);

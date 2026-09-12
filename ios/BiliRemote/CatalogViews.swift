@@ -2,9 +2,13 @@ import SwiftUI
 
 struct SearchView: View {
     @EnvironmentObject private var model: RemoteModel
-    @State private var query = "", kind = "videos"
-    @State private var videos: [VideoItem] = [], creators: [CreatorItem] = []
-    @State private var nextPage: Int?, loading = false, searched = false
+    @State private var query = ""
+    @State private var kind = "videos"
+    @State private var videos: [VideoItem] = []
+    @State private var creators: [CreatorItem] = []
+    @State private var nextPage: Int?
+    @State private var loading = false
+    @State private var searched = false
     @State private var generation = UUID()
     @State private var failure: String?
     var body: some View {
@@ -38,9 +42,13 @@ struct SearchView: View {
 struct CreatorView: View {
     let creator: CreatorItem
     @EnvironmentObject private var model: RemoteModel
-    @State private var category = "videos", order = "newest"
-    @State private var videos: [VideoItem] = [], collections: [CollectionItem] = []
-    @State private var nextPage: Int?, loading = false, failure: String?
+    @State private var category = "videos"
+    @State private var order = "newest"
+    @State private var videos: [VideoItem] = []
+    @State private var collections: [CollectionItem] = []
+    @State private var nextPage: Int?
+    @State private var loading = false
+    @State private var failure: String?
     @State private var generation = UUID()
     var body: some View {
         List {
@@ -74,7 +82,10 @@ struct CreatorView: View {
 struct CollectionView: View {
     let collection: CollectionItem
     @EnvironmentObject private var model: RemoteModel
-    @State private var videos: [VideoItem] = [], nextPage: Int?, loading = false, failure: String?
+    @State private var videos: [VideoItem] = []
+    @State private var nextPage: Int?
+    @State private var loading = false
+    @State private var failure: String?
     var body: some View {
         List {
             VStack(alignment: .leading, spacing: 15) { Text(collection.title).font(.title2.bold()); Button { model.startQueue(QueueSource(kind: "collection", url: collection.url)) } label: { Label("全部播放", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(!model.ready) }.padding(.vertical, 10)

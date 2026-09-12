@@ -3,8 +3,10 @@ import AVFoundation
 
 struct DevicesView: View {
     @EnvironmentObject private var model: RemoteModel
-    @State private var pairingText = "", scanner = false
-    @State private var tabs: [BrowserTab] = [], loadingTabs = false
+    @State private var pairingText = ""
+    @State private var scanner = false
+    @State private var tabs: [BrowserTab] = []
+    @State private var loadingTabs = false
     var body: some View {
         Form {
             Section {
