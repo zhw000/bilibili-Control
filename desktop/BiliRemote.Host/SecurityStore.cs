@@ -43,7 +43,19 @@ public sealed class SecurityStore : IDisposable
         devicesPath=Path.Combine(DesktopPaths.DataDirectory,"devices.bin");
         devices=File.Exists(devicesPath)?JsonSerializer.Deserialize<List<PairedDevice>>(ProtectedData.Unprotect(File.ReadAllBytes(devicesPath),null,DataProtectionScope.CurrentUser),Wire.Json)??[]:[];
     }
-    public static IReadOnlyList<IPAddress> Addresses()=>NetworkInterface.GetAllNetworkInterfaces().Where(n=>n.OperationalStatus==OperationalStatus.Up&&n.NetworkInterfaceType!=NetworkInterfaceType.Loopback).OrderByDescending(n=>n.GetIPProperties().GatewayAddresses.Count>0).SelectMany(n=>n.GetIPProperties().UnicastAddresses).Where(a=>a.Address.AddressFamily==AddressFamily.InterNetwork&&!IPAddress.IsLoopback(a.Address)&&!a.Address.ToString().StartsWith("169.254.",StringComparison.Ordinal)).Select(a=>a.Address).Distinct().ToArray();
+    public static IReadOnlyList<IPAddress> Addresses()
+    {
+        var candidates = NetworkInterface.GetAllNetworkInterfaces()
+            .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+            .SelectMany(n =>
+            {
+                var properties = n.GetIPProperties();
+                var gateway = properties.GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !g.Address.Equals(IPAddress.Any));
+                var virtualInterface = n.NetworkInterfaceType is NetworkInterfaceType.Tunnel or NetworkInterfaceType.Ppp || LocalNetwork.IsVirtualInterface(n.Name, n.Description);
+                return properties.UnicastAddresses.Select(a => new LocalNetworkAddress(a.Address, n.Name, gateway, n.NetworkInterfaceType == NetworkInterfaceType.Wireless80211, virtualInterface));
+            });
+        return LocalNetwork.ForPairing(candidates).Select(candidate => candidate.Address).ToArray();
+    }
     public PairingDescriptor Begin(string host,int port){lock(gate){pairingToken=Token();expires=DateTimeOffset.UtcNow.AddMinutes(2);return new(1,host,port,Fingerprint,pairingToken);}}
     public object Pair(string supplied,string deviceName)
     {
