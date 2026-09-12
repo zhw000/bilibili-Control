@@ -45,6 +45,8 @@ GitHub Actions 工作流分别构建 Windows/Chrome 和 iOS。下载 `BiliRemote
 
 ## 排查
 
+2026-09-12 配对证书修正：旧助手的五年期证书会被 iOS 拒绝，旧 App 仅显示 `cancelled`。更新助手后会备份旧身份并生成一年期证书，刷新二维码重新扫码即可；现有 iOS App 可继续使用。iOS 0.1.1 另增加了证书与网络错误的中文诊断。详情见[配对排查](docs/PAIRING-TROUBLESHOOTING.md)。
+
 2026-09-12 局域网修正：自动配对地址优先选择连接路由器的 Wi-Fi/以太网，排除 Meta/Clash、Tailscale 和虚拟机网卡。若旧版助手显示 `198.18.*` 等虚拟网卡地址，请更新电脑助手后刷新二维码并重新配对，手机 IPA 无需重新签名。
 
 | 现象 | 处理 |

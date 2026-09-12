@@ -2,6 +2,14 @@
 
 ## 自动检查
 
+### 配对证书修正（2026-09-12）
+
+Apple Security 诊断复现旧五年期证书因超过有效期上限而被拒绝（`-67901`），生产证书工厂生成的一年期证书通过。iOS 的 HTTPS/WSS 测试已改为使用生产 .NET 工厂生成的证书，替代与 Windows 实现不同的 OpenSSL 临时证书。
+
+核心测试合计 33 项通过，Windows HTTPS/WSS 16 项集成检查通过。实际安装的助手已更新并验证新证书总有效期 365 天，用户随后用手机原有 App 扫码，明确确认“已连接成功”。这确认了真机配对成功，其他播放功能与 30 分钟真机稳定性仍需按下文验收。
+
+修复后的 iOS 测试另覆盖中文取消提示，以及拒绝错误指纹、旧五年期证书、过期证书和仅供客户端使用的证书。[修复构建 34685282035](https://github.com/zhw000/bilibili-Control/actions/runs/34685282035) 的 Windows 与 iOS 均成功；9 项 iOS 测试通过，生成 iOS 0.1.1 真机 arm64 待签名 IPA。手机现有版本已成功配对，升级此 IPA 只为获得更具体的错误诊断。
+
 ### 局域网选址修正（2026-09-12）
 
 实际安装反馈暴露了旧版按默认网关选址时优先选择 Meta 虚拟网卡的问题。修正后排除虚拟接口、代理保留地址、Tailscale 共享地址及回环/链路本地地址，并优先选择有网关的真实 Wi-Fi/以太网。新增 14 项回归检查，核心测试合计 31 项通过。已在实际 Windows 安装目录更新两个组件，确认监听地址由代理接口切换至 Wi-Fi，并完成 HTTPS 可达性检查。实际 iPhone 需刷新二维码后重新扫码确认。
@@ -46,4 +54,4 @@ dotnet run --project tests/BiliRemote.Integration -c Release -- --soak-seconds 1
 
 结果保存于 `artifacts/integration/<测试编号>/result.json`；使用独立数据目录与随机本机端口，不修改已配对设备，不向真实播放器发命令。
 
-macOS 上运行网络测试前，执行 `python3 scripts/ios-transport-fixture.py --prepare`，再生成 Xcode 工程，并在另一个终端运行 `python3 scripts/ios-transport-fixture.py`。临时证书与测试配置保存在 Git 忽略的目录内。
+macOS 上运行网络测试前，先执行 `dotnet run --project tests/BiliRemote.CertificateFixture -c Release -- artifacts/ios-transport-fixture` 生成与 Windows 助手一致的证书，再执行 `python3 scripts/ios-transport-fixture.py --prepare`，生成 Xcode 工程，并在另一个终端运行 `python3 scripts/ios-transport-fixture.py`。临时证书与测试配置保存在 Git 忽略的目录内。
