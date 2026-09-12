@@ -61,6 +61,22 @@ public sealed class BehaviorTests
         await queue.Start(new("manual",Items:[new("BV1","One","https://www.bilibili.com/video/BV1")]));
         await queue.Ended(new(Ended:true));Assert.True(queue.Snapshot.Active);
     }
+    [Fact] public async Task FailedPaginationReleasesPlaybackOwnershipAndCanRetry()
+    {
+        var managed = false; var fail = true;
+        var first = new VideoItem("BV1", "First", "https://www.bilibili.com/video/BV1");
+        var queue = new PlaybackQueue((_, page) => page == 1
+            ? Task.FromResult(new PageResult<VideoItem>([first], 1, 2, 2, 2))
+            : fail ? throw new RemoteException("verification_required", "请完成验证")
+            : Task.FromResult(new PageResult<VideoItem>([first with { Bvid = "BV2" }], 2, 2, 2)),
+            (_, _, _, _) => Task.CompletedTask, value => { managed = value; return Task.CompletedTask; });
+        await queue.Start(new("creator", "123"));
+        await Assert.ThrowsAsync<RemoteException>(() => queue.Move(1));
+        Assert.False(managed); Assert.False(queue.Snapshot.Active); Assert.Null(queue.Snapshot.PlaybackId);
+        Assert.Equal("请完成验证", queue.Snapshot.Message);
+        fail = false; await queue.Move(1);
+        Assert.True(managed); Assert.Equal("BV2", queue.Snapshot.Items[queue.Snapshot.Index].Bvid);
+    }
     [Theory][InlineData("https://www.bilibili.com/video/BV1",true)][InlineData("https://www.bilibili.com.evil.test/video/BV1",false)][InlineData("file:///etc/passwd",false)]
     public void RestrictsNavigation(string url,bool allowed)=>Assert.Equal(allowed,Validation.BilibiliUrl(url));
 }

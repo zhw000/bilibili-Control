@@ -13,7 +13,7 @@ public static class Wire
     public static JsonElement Element<T>(T value) => JsonSerializer.SerializeToElement(value, Json);
     public static T Decode<T>(JsonElement value) => value.Deserialize<T>(Json) ?? throw new RemoteException("invalid_request", "请求内容为空");
     public static string Text(this JsonElement value, string key, string fallback = "") => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() ?? fallback : fallback;
-    public static double Number(this JsonElement value, string key, double fallback = 0) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key, out var p) && p.TryGetDouble(out var n) && double.IsFinite(n) ? n : fallback;
+    public static double Number(this JsonElement value, string key, double fallback = 0) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetDouble(out var n) && double.IsFinite(n) ? n : fallback;
     public static bool Flag(this JsonElement value, string key, bool fallback = false) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key, out var p) && (p.ValueKind is JsonValueKind.True or JsonValueKind.False) ? p.GetBoolean() : fallback;
 }
 
@@ -46,7 +46,7 @@ public static class Validation
     }
     public static double Range(JsonElement args, string key, double min, double max)
     {
-        if (!args.TryGetProperty(key, out var p) || !p.TryGetDouble(out var number) || !double.IsFinite(number) || number < min || number > max) throw new RemoteException("out_of_range", $"{key} 必须在 {min}～{max} 之间");
+        if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty(key, out var p) || p.ValueKind != JsonValueKind.Number || !p.TryGetDouble(out var number) || !double.IsFinite(number) || number < min || number > max) throw new RemoteException("out_of_range", $"{key} 必须在 {min}～{max} 之间");
         return number;
     }
     public static bool BilibiliUrl(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == "https" && (uri.Host == "www.bilibili.com" || uri.Host == "space.bilibili.com" || uri.Host == "search.bilibili.com");

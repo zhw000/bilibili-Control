@@ -123,7 +123,7 @@ enum DeviceKeychain {
                 self.pending.removeValue(forKey: id)?.resume(throwing: RemoteFailure(code: "timeout", message: "电脑响应超时，请检查电脑网页。")); self.timeouts.removeValue(forKey: id)
             }
             Task { [weak self] in
-                do { try await socket.send(.data(bytes)) }
+                do { try await socket.send(.string(String(decoding: bytes, as: UTF8.self))) }
                 catch { guard let self else { return }; self.timeouts.removeValue(forKey: id)?.cancel(); self.pending.removeValue(forKey: id)?.resume(throwing: error) }
             }
         }

@@ -1,0 +1,132 @@
+"""Loopback-only HTTPS/WSS fixture for the real iOS URLSession transport.
+
+Uses disposable identity files under artifacts; never connects to Bilibili.
+The Windows integration suite independently tests the production server.
+"""
+import base64
+import hashlib
+import json
+from pathlib import Path
+import ssl
+import struct
+import subprocess
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+ROOT = Path(__file__).resolve().parent.parent
+DATA = ROOT / "artifacts" / "ios-transport-fixture"
+CONFIG = ROOT / "ios" / "BiliRemoteTests" / "fixture.json"
+PORT = 34491
+TOKEN = "loopback-test-token-with-no-production-authority"
+PLAYER = dict(bvid="BVFixture1", title="传输测试", url="https://www.bilibili.com/video/BVFixture1/",
+              currentTime=42, duration=120, paused=True, ended=False, part=1, partCount=2,
+              volume=.6, muted=False, rate=1, danmaku=True, fullscreen=False)
+SNAPSHOT = dict(computerName="Transport fixture", browserConnected=True, player=PLAYER,
+                queue=dict(items=[], index=-1, active=False, canResume=False),
+                systemVolume=dict(value=.4, muted=False, deviceName="Fixture output", available=True))
+
+
+def prepare():
+    DATA.mkdir(parents=True, exist_ok=True)
+    (DATA / "openssl.cnf").write_text("""[req]
+distinguished_name=dn
+x509_extensions=ext
+prompt=no
+[dn]
+CN=Bili Remote transport fixture
+[ext]
+basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=IP:127.0.0.1
+""", encoding="utf-8")
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
+                    "-config", str(DATA / "openssl.cnf"), "-keyout", str(DATA / "key.pem"),
+                    "-out", str(DATA / "cert.pem")], check=True, capture_output=True)
+    der = ssl.PEM_cert_to_DER_cert((DATA / "cert.pem").read_text())
+    CONFIG.write_text(json.dumps(dict(version=1, host="127.0.0.1", port=PORT,
+                                     certificateSha256=hashlib.sha256(der).hexdigest(),
+                                     pairingToken=TOKEN)), encoding="utf-8")
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def reply(self, status, value):
+        data = json.dumps(value).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_POST(self):
+        value = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if self.path != "/api/v1/pair" or value.get("pairingToken") != TOKEN:
+            return self.reply(403, dict(error=dict(code="pairing_expired", message="Invalid test token")))
+        self.reply(200, dict(deviceId="fixture-device", accessToken=TOKEN, computerName="Transport fixture"))
+
+    def frame(self, value, opcode=1):
+        data = json.dumps(value).encode() if opcode == 1 else value
+        length = len(data)
+        head = bytes([128 | opcode, length]) if length < 126 else bytes([128 | opcode, 126]) + struct.pack("!H", length)
+        self.wfile.write(head + data)
+        self.wfile.flush()
+
+    def do_GET(self):
+        if self.path != "/api/v1/ws" or self.headers.get("Authorization") != "Bearer " + TOKEN:
+            return self.reply(401, {})
+        accept = base64.b64encode(hashlib.sha1((self.headers["Sec-WebSocket-Key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
+        self.send_response(101)
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept)
+        self.end_headers()
+        self.frame(dict(v=1, event="snapshot", data=SNAPSHOT))
+        self.close_connection = True
+        try:
+            while True:
+                header = self.rfile.read(2)
+                if len(header) != 2:
+                    return
+                opcode, size = header[0] & 15, header[1] & 127
+                if size == 126:
+                    size = struct.unpack("!H", self.rfile.read(2))[0]
+                elif size == 127:
+                    size = struct.unpack("!Q", self.rfile.read(8))[0]
+                if size > 1024 * 1024 or not header[1] & 128:
+                    raise ValueError("Invalid client frame")
+                mask = self.rfile.read(4)
+                payload = bytes(byte ^ mask[i % 4] for i, byte in enumerate(self.rfile.read(size)))
+                if opcode == 8:
+                    self.frame(payload, 8)
+                    return
+                if opcode == 9:
+                    self.frame(payload, 10)
+                    continue
+                # Production Windows server requires UTF-8 text JSON frames.
+                if opcode != 1 or not header[0] & 128:
+                    raise ValueError("Expected an unfragmented text JSON request")
+                request = json.loads(payload)
+                assert request["v"] == 1 and request["id"]
+                params = request["params"]
+                if request["method"] == "player.command" and params == dict(action="seekBy", value=10):
+                    result = dict(PLAYER, currentTime=52)
+                    self.frame(dict(v=1, id=request["id"], ok=True, result=result))
+                else:
+                    self.frame(dict(v=1, id=request["id"], ok=False, error=dict(code="fixture_error", message="测试错误回传")))
+        except (ConnectionError, ssl.SSLError):
+            pass
+
+
+if __name__ == "__main__":
+    if "--prepare" in sys.argv:
+        prepare()
+    else:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(DATA / "cert.pem", DATA / "key.pem")
+        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        print("iOS transport fixture ready on loopback", flush=True)
+        server.serve_forever()

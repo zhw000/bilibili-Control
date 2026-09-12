@@ -9,9 +9,15 @@ const windowStates=new Map<number,NonNullable<chrome.windows.UpdateInfo['state']
 const initialized=chrome.storage.session.get(['targetId','catalogId','managed','binding']).then(saved=>{targetId=typeof saved.targetId==='number'?saved.targetId:undefined;catalogId=typeof saved.catalogId==='number'?saved.catalogId:undefined;managed=saved.managed===true;currentBinding=saved.binding&&typeof saved.binding==='object'?saved.binding as Record<string,unknown>:undefined});
 async function remember(){await chrome.storage.session.set({targetId:targetId??null,catalogId:catalogId??null,managed,binding:currentBinding??null})}
 function send(event:string,data:unknown){try{port?.postMessage({v:1,event,data})}catch{}}
+async function releaseDisconnectedSession(){
+  await initialized;
+  managed=false;currentBinding=undefined;
+  await remember();
+  if(targetId&&await tabExists(targetId))await content(targetId,'player.manage',{enabled:false});
+}
 function connect(){
   if(port)return;
-  try{port=chrome.runtime.connectNative(HOST);port.onMessage.addListener((req:Request)=>{handle(req).then(result=>port?.postMessage({v:1,id:req.id,ok:true,result}),error=>{try{port?.postMessage({v:1,id:req.id,ok:false,error:{code:error.code??'extension_error',message:error.message??'扩展操作失败'}})}catch{}})});port.onDisconnect.addListener(()=>{port=undefined;chrome.action.setBadgeText({text:'!'});chrome.action.setBadgeBackgroundColor({color:'#D55D68'});void chrome.runtime.lastError;});port.postMessage({v:1,event:'bridge.ready',data:{version:'0.1.0'}});chrome.action.setBadgeText({text:''})}catch{port=undefined}
+  try{port=chrome.runtime.connectNative(HOST);port.onMessage.addListener((req:Request)=>{handle(req).then(result=>port?.postMessage({v:1,id:req.id,ok:true,result}),error=>{try{port?.postMessage({v:1,id:req.id,ok:false,error:{code:error.code??'extension_error',message:error.message??'扩展操作失败'}})}catch{}})});port.onDisconnect.addListener(()=>{port=undefined;chrome.action.setBadgeText({text:'!'});chrome.action.setBadgeBackgroundColor({color:'#D55D68'});void chrome.runtime.lastError;void releaseDisconnectedSession().catch(()=>{});});port.postMessage({v:1,event:'bridge.ready',data:{version:'0.1.0'}});chrome.action.setBadgeText({text:''})}catch{port=undefined}
 }
 async function tabExists(id:number|undefined){if(id===undefined||id===null)return false;try{const t=await chrome.tabs.get(id);return !!t.url&&urlAllowed(t.url)}catch{return false}}
 async function content(id:number,method:string,params:unknown={}):Promise<any>{

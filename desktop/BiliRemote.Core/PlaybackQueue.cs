@@ -45,7 +45,7 @@ public sealed class PlaybackQueue
             if (items.Count == 0) throw new RemoteException("empty_queue", "这个列表还没有可播放的视频");
             index = 0; await StartCurrent();
         }
-        catch { active = false; Notify(); throw; }
+        catch (Exception ex) { await Suspend(ex.Message); throw; }
         finally { gate.Release(); }
     }
     private void Append(IEnumerable<VideoItem> incoming)
@@ -59,15 +59,13 @@ public sealed class PlaybackQueue
         {
             playbackId = Guid.NewGuid().ToString("N"); active = true; message = null;
             lastState = new(Bvid: items[index].Bvid, Part: part, CurrentTime: time, PlaybackId: playbackId);
-            await manage(true);
-            try { await play(items[index], playbackId, part, time); Notify(); return; }
+            try { await manage(true); await play(items[index], playbackId, part, time); Notify(); return; }
             catch (RemoteException ex) when (ex.Code == "video_unavailable")
             {
                 items[index] = items[index] with { UnavailableReason = ex.Message };
                 if (await NextIndex()) { part = 1; time = 0; continue; }
                 await Complete(); return;
             }
-            catch { active = false; message = "播放未成功，点击继续播放重试"; await manage(false); Notify(); throw; }
         }
     }
     private async Task<bool> NextIndex()
@@ -81,10 +79,17 @@ public sealed class PlaybackQueue
         index++; return true;
     }
     private async Task Complete() { active = false; message = "已播放完全部视频"; playbackId = null; await manage(false); Notify(); }
+    private async Task Suspend(string reason)
+    {
+        active = false; playbackId = null; message = reason;
+        try { await manage(false); } catch { /* Preserve the original playback/catalogue error. */ }
+        Notify();
+    }
     public async Task Resume()
     {
         await gate.WaitAsync();
         try { if (index < 0) throw new RemoteException("empty_queue", "还没有可恢复的队列"); await StartCurrent(Math.Max(1, lastState.Part), Math.Max(0, lastState.CurrentTime)); }
+        catch (Exception ex) { await Suspend(ex.Message); throw; }
         finally { gate.Release(); }
     }
     public async Task Stop(string? reason = null)
@@ -104,7 +109,7 @@ public sealed class PlaybackQueue
             if (!await NextIndex()) { await Complete(); return; }
             await StartCurrent();
         }
-        catch (Exception ex) { active = false; message = ex.Message; Notify(); throw; }
+        catch (Exception ex) { await Suspend(ex.Message); throw; }
         finally { gate.Release(); }
     }
     public async Task Ended(PlayerState state)

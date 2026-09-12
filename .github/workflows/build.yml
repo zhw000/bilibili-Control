@@ -45,10 +45,14 @@ jobs:
         run: |
           xcodebuild -version
           brew install xcodegen
+          python3 scripts/ios-transport-fixture.py --prepare
           cd ios
           xcodegen generate
       - name: Run iOS tests
         run: |
+          python3 scripts/ios-transport-fixture.py > artifacts/ios-transport-fixture/server.log 2>&1 &
+          FIXTURE_PID=$!
+          trap 'kill "$FIXTURE_PID"' EXIT
           DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for v in d["devices"].values() for x in v if x["name"].startswith("iPhone")))')
           xcodebuild test -project ios/BiliRemote.xcodeproj -scheme BiliRemote -destination "platform=iOS Simulator,id=$DEVICE_ID" -resultBundlePath artifacts/iOS-tests.xcresult CODE_SIGNING_ALLOWED=NO
       - name: Archive unsigned device application

@@ -13,3 +13,4 @@ ios/build/
 TestResults/
 .vs/
 *.log
+ios/BiliRemoteTests/fixture.json
