@@ -1,4 +1,6 @@
 import XCTest
+import Security
+import CryptoKit
 @testable import BiliRemote
 
 final class TransportTests: XCTestCase {
@@ -45,6 +47,40 @@ final class TransportTests: XCTestCase {
         do {
             _ = try await RemoteTransport().pair(changed, name: "Reject certificate test")
             XCTFail("A different certificate must never be accepted")
-        } catch { XCTAssertFalse(error is XCTSkip) }
+        } catch let error as RemoteFailure {
+            XCTAssertEqual(error.code, "certificate_mismatch")
+            XCTAssertTrue(error.message.contains("证书"))
+        }
+    }
+
+    func testCancellationHasActionableChineseDiagnostic() {
+        let delegate = PinnedSessionDelegate(host: "192.168.1.2", fingerprint: String(repeating: "0", count: 64))
+        let error = ConnectionFailure.explain(URLError(.cancelled), delegate: delegate, address: "192.168.1.2:33391")
+        XCTAssertEqual((error as? RemoteFailure)?.code, "network_-999")
+        XCTAssertTrue(error.localizedDescription.contains("局域网"))
+        XCTAssertFalse(error.localizedDescription.contains("cancelled"))
+    }
+
+    func testPinnedCertificateStillRequiresValidDatesAndServerUsage() throws {
+        guard let url = Bundle(for: Self.self).url(forResource: "fixture", withExtension: "json") else {
+            throw XCTSkip("Prepare the .NET certificate fixture before running transport tests.")
+        }
+        struct Certificates: Decodable { let certificates: [String: String] }
+        let fixtures = try JSONDecoder().decode(Certificates.self, from: Data(contentsOf: url)).certificates
+        for name in ["server", "legacy", "expired", "client-only"] {
+            let data = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(fixtures[name])))
+            let certificate = try XCTUnwrap(SecCertificateCreateWithData(nil, data as CFData))
+            var trust: SecTrust?
+            XCTAssertEqual(SecTrustCreateWithCertificates(certificate, SecPolicyCreateSSL(true, nil), &trust), errSecSuccess)
+            let pin = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            let value = try XCTUnwrap(trust)
+            if name == "server" { XCTAssertNoThrow(try PinnedSessionDelegate.validate(value, fingerprint: pin)) }
+            else {
+                XCTAssertThrowsError(try PinnedSessionDelegate.validate(value, fingerprint: pin)) { error in
+                    XCTAssertEqual((error as? RemoteFailure)?.code, "certificate_invalid", name)
+                    XCTAssertTrue(error.localizedDescription.contains("证书校验"))
+                }
+            }
+        }
     }
 }

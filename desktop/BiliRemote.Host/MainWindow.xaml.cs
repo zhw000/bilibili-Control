@@ -18,7 +18,7 @@ public partial class MainWindow:System.Windows.Window
         Closing+=(_,eventArgs)=>{if(!quitting){eventArgs.Cancel=true;Hide();}};
         server.Changed+=()=>Dispatcher.BeginInvoke(UpdateStatus);UpdateStatus();RefreshPairing(null,null!);
     }
-    private void UpdateStatus(){StatusText.Text=(server.BrowserConnected?"● Chrome 已连接":"○ 等待 Chrome 扩展连接")+$"    ·    {server.PhoneCount} 台手机在线";AddressText.Text=$"{Environment.MachineName}  ·  {server.Address}:{server.Port}";var selected=(DevicesList.SelectedItem as PairedDevice)?.Id;DevicesList.ItemsSource=server.Security.Devices;DevicesList.SelectedItem=server.Security.Devices.FirstOrDefault(d=>d.Id==selected);}
+    private void UpdateStatus(){StatusText.Text=(server.BrowserConnected?"● Chrome 已连接":"○ 等待 Chrome 扩展连接")+$"    ·    {server.PhoneCount} 台手机在线"+(server.Security.IdentityRenewed?"    ·    证书已更新，请重新扫码配对":"");AddressText.Text=$"{Environment.MachineName}  ·  {server.Address}:{server.Port}";var selected=(DevicesList.SelectedItem as PairedDevice)?.Id;DevicesList.ItemsSource=server.Security.Devices;DevicesList.SelectedItem=server.Security.Devices.FirstOrDefault(d=>d.Id==selected);}
     private void RefreshPairing(object? sender,System.Windows.RoutedEventArgs e)
     {
         pairingLink=SecurityStore.Link(server.Security.Begin(server.Address,server.Port));

@@ -5,18 +5,70 @@ import CryptoKit
 final class PinnedSessionDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     let host: String
     let fingerprint: String
+    private let lock = NSLock()
+    private var validationFailure: RemoteFailure?
+    var failure: RemoteFailure? { lock.withLock { validationFailure } }
     init(host: String, fingerprint: String) { self.host = host; self.fingerprint = fingerprint.lowercased() }
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust, challenge.protectionSpace.host == host, let trust = challenge.protectionSpace.serverTrust, let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let certificate = chain.first else { completionHandler(.cancelAuthenticationChallenge, nil); return }
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust else {
+            completionHandler(.performDefaultHandling, nil); return
+        }
+        do {
+            guard challenge.protectionSpace.host == host, let trust = challenge.protectionSpace.serverTrust else {
+                throw RemoteFailure(code: "certificate_host", message: "连接地址或电脑证书异常，请刷新电脑助手的二维码后重新扫描。")
+            }
+            try Self.validate(trust, fingerprint: fingerprint)
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } catch {
+            lock.withLock { validationFailure = error as? RemoteFailure }
+            completionHandler(.cancelAuthenticationChallenge, nil)
+        }
+    }
+
+    static func validate(_ trust: SecTrust, fingerprint: String) throws {
+        guard let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let certificate = chain.first else {
+            throw RemoteFailure(code: "certificate_missing", message: "电脑未提供有效证书，请更新并重启电脑助手。")
+        }
         let actual = SHA256.hash(data: SecCertificateCopyData(certificate) as Data).map { String(format: "%02x", $0) }.joined()
-        guard actual == fingerprint else { completionHandler(.cancelAuthenticationChallenge, nil); return }
+        guard actual == fingerprint.lowercased() else {
+            throw RemoteFailure(code: "certificate_mismatch", message: "电脑证书与配对二维码不一致，已停止连接。请确认电脑助手的地址，刷新二维码后重新扫描；如仍失败，请检查代理是否拦截了局域网连接。")
+        }
         // The scanned fingerprint establishes identity even when DHCP changes the address.
         // Still validate the pinned certificate's validity and server-auth usage.
-        SecTrustSetAnchorCertificates(trust, [certificate] as CFArray)
-        SecTrustSetAnchorCertificatesOnly(trust, true)
-        SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, nil))
-        guard SecTrustEvaluateWithError(trust, nil) else { completionHandler(.cancelAuthenticationChallenge, nil); return }
-        completionHandler(.useCredential, URLCredential(trust: trust))
+        guard SecTrustSetAnchorCertificates(trust, [certificate] as CFArray) == errSecSuccess,
+              SecTrustSetAnchorCertificatesOnly(trust, true) == errSecSuccess,
+              SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, nil)) == errSecSuccess else {
+            throw RemoteFailure(code: "certificate_policy", message: "无法建立证书校验，请关闭并重新打开 App。")
+        }
+        var trustError: CFError?
+        guard SecTrustEvaluateWithError(trust, &trustError) else {
+            let detail = trustError.map { "\(CFErrorGetCode($0))：\(CFErrorCopyDescription($0) as String)" } ?? "未知原因"
+            throw RemoteFailure(code: "certificate_invalid", message: "iOS 拒绝了电脑证书。请更新电脑助手，并确认手机和电脑的日期时间正确。\n证书校验：\(detail)")
+        }
+    }
+}
+
+enum ConnectionFailure {
+    static func explain(_ error: Error, delegate: PinnedSessionDelegate, address: String) -> Error {
+        if let failure = delegate.failure { return failure }
+        if error is RemoteFailure { return error }
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else { return error }
+        let hint: String
+        switch nsError.code {
+        case NSURLErrorCannotConnectToHost, NSURLErrorCannotFindHost, NSURLErrorTimedOut:
+            hint = "无法连接电脑 \(address)。请确认电脑助手正在运行、手机与电脑连接同一路由器，并已允许 App 使用局域网。"
+        case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost:
+            hint = "局域网连接不可用。请检查 Wi-Fi，并在 iPhone 设置 → 隐私与安全性 → 本地网络中允许哔哩遥控。"
+        case NSURLErrorCancelled:
+            hint = "配对连接被中断。请刷新电脑二维码后重试；若仍失败，请检查手机的局域网权限以及代理的局域网直连设置。"
+        case NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateUntrusted,
+             NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateNotYetValid,
+             NSURLErrorServerCertificateHasUnknownRoot:
+            hint = "无法与电脑建立安全连接。请更新电脑助手、检查两端日期时间并重新扫码配对。"
+        default: hint = "连接电脑 \(address) 失败：\(nsError.localizedDescription)"
+        }
+        return RemoteFailure(code: "network_\(nsError.code)", message: "\(hint)\n网络错误：\(nsError.code)")
     }
 }
 enum DeviceKeychain {
@@ -60,7 +112,10 @@ enum DeviceKeychain {
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(["pairingToken": descriptor.pairingToken, "deviceName": name])
-        let (data, response) = try await temporary.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do { (data, response) = try await temporary.data(for: request) }
+        catch { throw ConnectionFailure.explain(error, delegate: delegate, address: "\(descriptor.host):\(descriptor.port)") }
         guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
             struct Failure: Decodable { let error: RemoteFailure }
             throw (try? JSONDecoder().decode(Failure.self, from: data).error) ?? RemoteFailure(code: "pairing_failed", message: "配对失败，请刷新电脑上的二维码后重试。")
@@ -79,7 +134,8 @@ enum DeviceKeychain {
         guard let config = configuration else { return }
         generation = UUID(); let thisGeneration = generation; status = .connecting
         let settings = URLSessionConfiguration.ephemeral; settings.timeoutIntervalForRequest = 20
-        session = URLSession(configuration: settings, delegate: PinnedSessionDelegate(host: config.host, fingerprint: config.certificateSha256), delegateQueue: nil)
+        let delegate = PinnedSessionDelegate(host: config.host, fingerprint: config.certificateSha256)
+        session = URLSession(configuration: settings, delegate: delegate, delegateQueue: nil)
         var request = URLRequest(url: URL(string: "wss://\(config.host):\(config.port)/api/v1/ws")!)
         request.setValue("Bearer \(config.accessToken)", forHTTPHeaderField: "Authorization")
         let connection = session!.webSocketTask(with: request); socket = connection; connection.maximumMessageSize = 1024 * 1024; connection.resume()
@@ -94,7 +150,7 @@ enum DeviceKeychain {
                 }
             } catch {
                 guard let self, self.generation == thisGeneration, self.configuration != nil else { return }
-                self.failed(error)
+                self.failed(ConnectionFailure.explain(error, delegate: delegate, address: "\(config.host):\(config.port)"))
             }
         }
     }
@@ -133,7 +189,7 @@ enum DeviceKeychain {
     private func failed(_ error: Error) {
         socket?.cancel(with: .goingAway, reason: nil); socket = nil; session?.invalidateAndCancel(); session = nil
         failPending(RemoteFailure.disconnected); status = .connecting
-        onConnectionError?("连接暂时中断。请确认电脑助手正在运行、允许局域网访问，并且手机与电脑在同一网络。")
+        onConnectionError?(error.localizedDescription)
         let delay = min(15, pow(2, Double(retryAttempt))); retryAttempt += 1
         retryTask = Task { [weak self] in try? await Task.sleep(for: .seconds(delay)); guard !Task.isCancelled else { return }; self?.open() }
     }

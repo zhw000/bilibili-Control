@@ -28,7 +28,7 @@ struct DevicesView: View {
                     Text("选定后固定控制此标签页；没有合适的标签页时，点播视频会自动创建。").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            Section { Text("Bili Remote 0.1.0 · 自用版").font(.footnote).foregroundStyle(.secondary) }
+            Section { Text("Bili Remote \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") · 自用版").font(.footnote).foregroundStyle(.secondary) }
         }.navigationTitle("设备")
             .sheet(isPresented: $scanner) { NavigationStack { QRScanner { text in scanner = false; Task { await model.pair(text) } }.ignoresSafeArea(edges: .bottom).navigationTitle("扫描电脑二维码").navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { scanner = false } } } } }
             .onChange(of: model.snapshot.browserConnected, initial: true) { _, ready in if ready && model.connected { Task { await refreshTabs() } } }

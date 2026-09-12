@@ -32,7 +32,9 @@ def prepare():
     der = ssl.PEM_cert_to_DER_cert((DATA / "cert.pem").read_text())
     CONFIG.write_text(json.dumps(dict(version=1, host="127.0.0.1", port=PORT,
                                      certificateSha256=hashlib.sha256(der).hexdigest(),
-                                     pairingToken=TOKEN)), encoding="utf-8")
+                                     pairingToken=TOKEN,
+                                     certificates={name: base64.b64encode((DATA / (name + ".cer")).read_bytes()).decode()
+                                                   for name in ["server", "legacy", "expired", "client-only"]})), encoding="utf-8")
 
 
 class Handler(BaseHTTPRequestHandler):

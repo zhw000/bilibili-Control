@@ -19,6 +19,7 @@ public sealed class SecurityStore : IDisposable
     private string? pairingToken;
     private DateTimeOffset expires;
     public X509Certificate2 Certificate { get; }
+    public bool IdentityRenewed { get; }
     public string Fingerprint => Certificate.GetCertHashString(HashAlgorithmName.SHA256).ToLowerInvariant();
     public IReadOnlyList<PairedDevice> Devices { get { lock(gate) return devices.ToArray(); } }
     public SecurityStore()
@@ -27,17 +28,22 @@ public sealed class SecurityStore : IDisposable
         var certPath=Path.Combine(DesktopPaths.DataDirectory,"identity.bin");
         // Windows Schannel needs a named key container; ephemeral PFX keys fail TLS handshakes.
         // UserKeySet's temporary import is cleaned up when the certificate is disposed.
-        if(File.Exists(certPath)) Certificate=X509CertificateLoader.LoadPkcs12(ProtectedData.Unprotect(File.ReadAllBytes(certPath),null,DataProtectionScope.CurrentUser),null,X509KeyStorageFlags.UserKeySet);
+        X509Certificate2? existing = File.Exists(certPath)
+            ? X509CertificateLoader.LoadPkcs12(ProtectedData.Unprotect(File.ReadAllBytes(certPath),null,DataProtectionScope.CurrentUser),null,X509KeyStorageFlags.UserKeySet)
+            : null;
+        if(existing is not null && !ServerCertificate.NeedsReplacement(existing, DateTimeOffset.UtcNow)) Certificate=existing;
         else
         {
-            using var key=RSA.Create(2048);
-            var request=new CertificateRequest("CN=Bili Remote",key,HashAlgorithmName.SHA256,RSASignaturePadding.Pkcs1);
-            request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false,false,0,true));
-            request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature|X509KeyUsageFlags.KeyEncipherment,true));
-            request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection{new("1.3.6.1.5.5.7.3.1")},true));
-            var san=new SubjectAlternativeNameBuilder();san.AddDnsName("localhost");san.AddIpAddress(IPAddress.Loopback);foreach(var ip in Addresses())san.AddIpAddress(ip);request.CertificateExtensions.Add(san.Build());
-            using var generated=request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1),DateTimeOffset.UtcNow.AddYears(5));
-            var bytes=generated.Export(X509ContentType.Pfx);File.WriteAllBytes(certPath,ProtectedData.Protect(bytes,null,DataProtectionScope.CurrentUser));
+            IdentityRenewed = existing is not null;
+            existing?.Dispose();
+            using var generated=ServerCertificate.Create(Addresses(), DateTimeOffset.UtcNow);
+            var bytes=generated.Export(X509ContentType.Pfx);
+            // Preserve the DPAPI-protected old identity for recovery. Paired tokens are untouched;
+            // phones must explicitly scan the new fingerprint before trusting a renewed identity.
+            if(IdentityRenewed) File.Copy(certPath, certPath+".previous-"+Guid.NewGuid().ToString("N"));
+            var temporary=certPath+".tmp";
+            File.WriteAllBytes(temporary,ProtectedData.Protect(bytes,null,DataProtectionScope.CurrentUser));
+            File.Move(temporary,certPath,true);
             Certificate=X509CertificateLoader.LoadPkcs12(bytes,null,X509KeyStorageFlags.UserKeySet);
         }
         devicesPath=Path.Combine(DesktopPaths.DataDirectory,"devices.bin");

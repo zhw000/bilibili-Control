@@ -13,4 +13,6 @@ for path in CommandLine.arguments.dropFirst() {
     var error: CFError?
     let valid = SecTrustEvaluateWithError(trust, &error)
     print("\(URL(fileURLWithPath: path).lastPathComponent): valid=\(valid), error=\(String(describing: error)), details=\(String(describing: SecTrustCopyResult(trust)))")
+    if path.hasSuffix("/server.cer") { precondition(valid, "Production Windows certificate must pass Apple SSL policy") }
+    if path.hasSuffix("/legacy.cer") { precondition(!valid, "Regression fixture must reproduce rejection of the five-year certificate") }
 }
