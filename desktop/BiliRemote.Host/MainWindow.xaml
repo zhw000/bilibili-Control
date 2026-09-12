@@ -1,0 +1,18 @@
+<Window x:Class="BiliRemote.Host.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="哔哩遥控 · 电脑助手" Width="680" Height="740" MinWidth="580" MinHeight="650" Background="#F7F7F9" WindowStartupLocation="CenterScreen" FontFamily="Microsoft YaHei UI">
+ <Window.Resources><Style TargetType="Button"><Setter Property="Padding" Value="16,10"/><Setter Property="Margin" Value="0,4,8,4"/><Setter Property="Cursor" Value="Hand"/></Style></Window.Resources>
+ <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="32">
+ <TextBlock Text="哔哩遥控" FontSize="29" FontWeight="SemiBold" Foreground="#24242A"/><TextBlock Text="手机选片，电脑播放。" Foreground="#74747F" Margin="0,8,0,22"/>
+ <Border Background="White" CornerRadius="16" Padding="20"><StackPanel>
+ <TextBlock x:Name="StatusText" FontSize="15" FontWeight="Medium"/><TextBlock x:Name="AddressText" Foreground="#74747F" Margin="0,8,0,0"/>
+ <TextBlock Text="用 iPhone 扫描二维码配对" FontSize="18" FontWeight="SemiBold" Margin="0,22,0,4"/>
+ <TextBlock Text="二维码两分钟有效，只能使用一次。" Foreground="#74747F"/>
+ <Image x:Name="QrImage" Width="210" Height="210" Margin="0,10" HorizontalAlignment="Left"/>
+ <WrapPanel><Button Content="刷新配对二维码" Click="RefreshPairing"/><Button Content="复制配对信息" Click="CopyPairing"/></WrapPanel>
+ <TextBlock Text="手机与电脑应连接同一路由器。电脑可使用网线。" Foreground="#74747F" TextWrapping="Wrap" Margin="0,8,0,0"/>
+ </StackPanel></Border>
+ <TextBlock Text="已配对设备" FontSize="18" FontWeight="SemiBold" Margin="0,24,0,10"/>
+ <ListBox x:Name="DevicesList" DisplayMemberPath="Name" Height="80" BorderThickness="0"/><Button Content="解绑所选设备" Click="RevokeDevice" HorizontalAlignment="Left"/>
+ <WrapPanel Margin="0,16,0,0"><Button Content="允许局域网连接" Click="AllowFirewall"/><Button Content="打开扩展文件夹" Click="OpenExtension"/><Button Content="退出助手" Click="Quit"/></WrapPanel>
+ <TextBlock Text="首次安装：在 chrome://extensions 开启开发者模式，点击“加载已解压的扩展程序”，选择安装目录中的 extension 文件夹。关闭本窗口后助手继续在托盘运行。" TextWrapping="Wrap" Foreground="#74747F" FontSize="12" Margin="0,8,0,0"/>
+ </StackPanel></ScrollViewer>
+</Window>

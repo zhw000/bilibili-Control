@@ -1,0 +1,73 @@
+name: Build signed-ready apps
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'codex/**']
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: Build, test, and package Windows and Chrome
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - name: Require installer
+        shell: pwsh
+        run: if (-not (Test-Path artifacts/BiliRemote-Setup-0.1.0.exe)) { throw 'Windows installer missing' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BiliRemote-Windows-and-Chrome
+          path: |
+            artifacts/BiliRemote-Setup-*.exe
+            artifacts/BiliRemote-Windows.zip
+            artifacts/BiliRemote-Chrome.zip
+          retention-days: 14
+          if-no-files-found: error
+  ios:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate Xcode project
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+          cd ios
+          xcodegen generate
+      - name: Run iOS tests
+        run: |
+          DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for v in d["devices"].values() for x in v if x["name"].startswith("iPhone")))')
+          xcodebuild test -project ios/BiliRemote.xcodeproj -scheme BiliRemote -destination "platform=iOS Simulator,id=$DEVICE_ID" -resultBundlePath artifacts/iOS-tests.xcresult CODE_SIGNING_ALLOWED=NO
+      - name: Archive unsigned device application
+        run: |
+          xcodebuild archive -project ios/BiliRemote.xcodeproj -scheme BiliRemote -configuration Release -destination 'generic/platform=iOS' -archivePath artifacts/BiliRemote.xcarchive CODE_SIGNING_ALLOWED=NO
+          mkdir -p artifacts/ipa/Payload
+          cp -R artifacts/BiliRemote.xcarchive/Products/Applications/BiliRemote.app artifacts/ipa/Payload/
+          cd artifacts/ipa
+          ditto -c -k --keepParent Payload ../BiliRemote-unsigned.ipa
+      - name: Verify IPA platform and architecture
+        run: python3 scripts/verify-ipa.py artifacts/BiliRemote-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BiliRemote-iOS-unsigned
+          path: artifacts/BiliRemote-unsigned.ipa
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: BiliRemote-iOS-test-results
+          path: artifacts/iOS-tests.xcresult
+          retention-days: 7

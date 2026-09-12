@@ -1,0 +1,94 @@
+import SwiftUI
+
+struct SearchView: View {
+    @EnvironmentObject private var model: RemoteModel
+    @State private var query = "", kind = "videos"
+    @State private var videos: [VideoItem] = [], creators: [CreatorItem] = []
+    @State private var nextPage: Int?, loading = false, searched = false
+    @State private var generation = UUID()
+    @State private var failure: String?
+    var body: some View {
+        List {
+            ConnectionNotice().listRowSeparator(.hidden)
+            Picker("搜索类型", selection: $kind) { Text("视频").tag("videos"); Text("UP 主").tag("creators") }.pickerStyle(.segmented).listRowSeparator(.hidden)
+            if !searched { ContentUnavailableView("想看点什么？", systemImage: "sparkles.tv", description: Text("在手机找到喜欢的内容，\n让电脑的大屏开始播放。")).listRowSeparator(.hidden) }
+            if let failure { Text(failure).foregroundStyle(.secondary) }
+            if kind == "videos" { ForEach(videos) { VideoRow(video: $0) } }
+            else { ForEach(creators) { creator in NavigationLink { CreatorView(creator: creator) } label: { HStack(spacing: 12) { CoverView(url: creator.avatar).frame(width: 48, height: 48).clipShape(Circle()); VStack(alignment: .leading, spacing: 5) { Text(creator.name).font(.headline); Text(creator.description ?? "进入主页查看投稿和合集").font(.caption).foregroundStyle(.secondary).lineLimit(2) } }.padding(.vertical, 6) } } }
+            if searched && !loading && failure == nil && videos.isEmpty && creators.isEmpty { ContentUnavailableView.search(text: query) }
+            if loading { HStack { Spacer(); ProgressView("正在电脑上查找…"); Spacer() }.listRowSeparator(.hidden) }
+            if nextPage != nil && !loading { Button("加载更多") { Task { await load(reset: false) } }.frame(maxWidth: .infinity) }
+        }.listStyle(.plain).navigationTitle("发现")
+            .searchable(text: $query, prompt: "搜索视频或 UP 主").onSubmit(of: .search) { Task { await load(reset: true) } }
+            .onChange(of: kind) { _, _ in if searched { Task { await load(reset: true) } } }
+    }
+    private func load(reset: Bool) async {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines); guard !text.isEmpty else { return }
+        let ticket = UUID(); generation = ticket; loading = true; searched = true; failure = nil
+        let category = kind, page = reset ? 1 : nextPage ?? 1
+        if reset { videos = []; creators = []; nextPage = nil }
+        do {
+            let params: [String: JSONValue] = ["query": .string(text), "kind": .string(category), "page": .number(Double(page))]
+            if category == "videos" { let result: PageResult<VideoItem> = try await model.transport.request("search", params: params); guard generation == ticket else { return }; videos.append(contentsOf: result.items.filter { item in !videos.contains(where: { $0.id == item.id }) }); nextPage = result.nextPage }
+            else { let result: PageResult<CreatorItem> = try await model.transport.request("search", params: params); guard generation == ticket else { return }; creators.append(contentsOf: result.items.filter { item in !creators.contains(where: { $0.id == item.id }) }); nextPage = result.nextPage }
+        } catch { if generation == ticket { failure = error.localizedDescription } }
+        if generation == ticket { loading = false }
+    }
+}
+struct CreatorView: View {
+    let creator: CreatorItem
+    @EnvironmentObject private var model: RemoteModel
+    @State private var category = "videos", order = "newest"
+    @State private var videos: [VideoItem] = [], collections: [CollectionItem] = []
+    @State private var nextPage: Int?, loading = false, failure: String?
+    @State private var generation = UUID()
+    var body: some View {
+        List {
+            HStack(spacing: 16) { CoverView(url: creator.avatar).frame(width: 64, height: 64).clipShape(Circle()); VStack(alignment: .leading, spacing: 5) { Text(creator.name).font(.title2.bold()); Text("UP 主 · \(creator.id)").font(.caption).foregroundStyle(.secondary) } }.padding(.vertical, 8).listRowSeparator(.hidden)
+            Picker("内容类型", selection: $category) { Text("全部投稿").tag("videos"); Text("合集和系列").tag("collections") }.pickerStyle(.segmented)
+            if category == "videos" {
+                HStack { Picker("顺序", selection: $order) { Text("最新优先").tag("newest"); Text("最早优先").tag("oldest") }; Spacer(); Button { model.startQueue(QueueSource(kind: "creator", creatorId: creator.id, order: order)) } label: { Label("全部播放", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(!model.ready) }
+                ForEach(videos) { VideoRow(video: $0) }
+            } else {
+                ForEach(collections) { collection in NavigationLink { CollectionView(collection: collection) } label: { HStack { CoverView(url: collection.cover).frame(width: 110, height: 70).clipShape(RoundedRectangle(cornerRadius: 10)); VStack(alignment: .leading, spacing: 5) { Text(collection.title).font(.headline); if let count = collection.count { Text("\(count) 个视频").font(.caption).foregroundStyle(.secondary) } } }.padding(.vertical, 5) } }
+            }
+            if let failure { Text(failure).foregroundStyle(.secondary); Button("重新加载") { Task { await load(reset: true) } } }
+            if loading { ProgressView("读取主页…").frame(maxWidth: .infinity) }
+            if !loading && failure == nil && (category == "videos" ? videos.isEmpty : collections.isEmpty) { ContentUnavailableView("这里还没有内容", systemImage: "tray") }
+            if nextPage != nil && !loading { Button("加载更多") { Task { await load(reset: false) } } }
+        }.listStyle(.plain).navigationTitle("UP 主主页").navigationBarTitleDisplayMode(.inline)
+            .task(id: category + order) { await load(reset: true) }
+    }
+    private func load(reset: Bool) async {
+        let ticket = UUID(); generation = ticket; loading = true; failure = nil
+        let mode = category, page = reset ? 1 : nextPage ?? 1
+        if reset { videos = []; collections = []; nextPage = nil }
+        do {
+            let params: [String: JSONValue] = ["creatorId": .string(creator.id), "order": .string(order), "page": .number(Double(page))]
+            if mode == "videos" { let result: PageResult<VideoItem> = try await model.transport.request("creator.videos", params: params); guard ticket == generation else { return }; videos.append(contentsOf: result.items.filter { item in !videos.contains(where: { $0.id == item.id }) }); nextPage = result.nextPage }
+            else { let result: PageResult<CollectionItem> = try await model.transport.request("creator.collections", params: params); guard ticket == generation else { return }; collections.append(contentsOf: result.items.filter { item in !collections.contains(where: { $0.id == item.id }) }); nextPage = result.nextPage }
+        } catch { if ticket == generation { failure = error.localizedDescription } }
+        if ticket == generation { loading = false }
+    }
+}
+struct CollectionView: View {
+    let collection: CollectionItem
+    @EnvironmentObject private var model: RemoteModel
+    @State private var videos: [VideoItem] = [], nextPage: Int?, loading = false, failure: String?
+    var body: some View {
+        List {
+            VStack(alignment: .leading, spacing: 15) { Text(collection.title).font(.title2.bold()); Button { model.startQueue(QueueSource(kind: "collection", url: collection.url)) } label: { Label("全部播放", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(!model.ready) }.padding(.vertical, 10)
+            ForEach(videos) { VideoRow(video: $0) }
+            if let failure { Text(failure).foregroundStyle(.secondary); Button("重新加载") { Task { await load(reset: true) } } }
+            if loading { ProgressView("读取合集…") }
+            if !loading && failure == nil && videos.isEmpty { ContentUnavailableView("合集还没有视频", systemImage: "tray") }
+            if nextPage != nil && !loading { Button("加载更多") { Task { await load(reset: false) } } }
+        }.listStyle(.plain).navigationTitle("合集和系列").navigationBarTitleDisplayMode(.inline).task { await load(reset: true) }
+    }
+    private func load(reset: Bool) async {
+        guard !loading else { return }; loading = true; failure = nil; defer { loading = false }
+        let page = reset ? 1 : nextPage ?? 1
+        do { let result: PageResult<VideoItem> = try await model.transport.request("collection.videos", params: ["url": .string(collection.url), "page": .number(Double(page))]); if reset { videos = [] }; videos.append(contentsOf: result.items.filter { item in !videos.contains(where: { $0.id == item.id }) }); nextPage = result.nextPage }
+        catch { failure = error.localizedDescription }
+    }
+}

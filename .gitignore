@@ -1,0 +1,15 @@
+.tools/
+node_modules/
+bin/
+obj/
+artifacts/
+extension/dist/
+ios/BiliRemote.xcodeproj/
+ios/build/
+.DS_Store
+*.user
+*.pfx
+*.ipa
+TestResults/
+.vs/
+*.log

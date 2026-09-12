@@ -1,0 +1,85 @@
+import {bounded,numericId,PageResult,RemoteError,Request,urlAllowed} from './types';
+
+const HOST='com.biliremote.bridge';
+let port:chrome.runtime.Port|undefined,targetId:number|undefined,catalogId:number|undefined,managed=false;
+let currentBinding:Record<string,unknown>|undefined;
+let catalogSerial:Promise<unknown>=Promise.resolve();
+const windowStates=new Map<number,NonNullable<chrome.windows.UpdateInfo['state']>>();
+const initialized=chrome.storage.session.get(['targetId','catalogId','managed','binding']).then(saved=>{targetId=typeof saved.targetId==='number'?saved.targetId:undefined;catalogId=typeof saved.catalogId==='number'?saved.catalogId:undefined;managed=saved.managed===true;currentBinding=saved.binding&&typeof saved.binding==='object'?saved.binding as Record<string,unknown>:undefined});
+async function remember(){await chrome.storage.session.set({targetId:targetId??null,catalogId:catalogId??null,managed,binding:currentBinding??null})}
+function send(event:string,data:unknown){try{port?.postMessage({v:1,event,data})}catch{}}
+function connect(){
+  if(port)return;
+  try{port=chrome.runtime.connectNative(HOST);port.onMessage.addListener((req:Request)=>{handle(req).then(result=>port?.postMessage({v:1,id:req.id,ok:true,result}),error=>{try{port?.postMessage({v:1,id:req.id,ok:false,error:{code:error.code??'extension_error',message:error.message??'扩展操作失败'}})}catch{}})});port.onDisconnect.addListener(()=>{port=undefined;chrome.action.setBadgeText({text:'!'});chrome.action.setBadgeBackgroundColor({color:'#D55D68'});void chrome.runtime.lastError;});port.postMessage({v:1,event:'bridge.ready',data:{version:'0.1.0'}});chrome.action.setBadgeText({text:''})}catch{port=undefined}
+}
+async function tabExists(id:number|undefined){if(id===undefined||id===null)return false;try{const t=await chrome.tabs.get(id);return !!t.url&&urlAllowed(t.url)}catch{return false}}
+async function content(id:number,method:string,params:unknown={}):Promise<any>{
+  let reply:any;
+  for(let i=0;i<60;i++){try{reply=await chrome.tabs.sendMessage(id,{method,params});if(reply)break}catch{}await new Promise(resolve=>setTimeout(resolve,200))}
+  if(!reply)throw new RemoteError('extension_not_ready','网页扩展尚未就绪，请刷新目标哔哩哔哩页面');
+  if(!reply.ok)throw new RemoteError(reply.error.code,reply.error.message);return reply.result;
+}
+async function navigation(id:number,url:string){
+  await chrome.tabs.update(id,{url});
+  for(let i=0;i<100;i++){await new Promise(resolve=>setTimeout(resolve,150));const tab=await chrome.tabs.get(id);if(tab.status==='complete'&&tab.url){const actual=new URL(tab.url),expected=new URL(url);if(actual.host===expected.host&&actual.pathname.replace(/\/$/,'')===expected.pathname.replace(/\/$/,''))return}}
+  throw new RemoteError('navigation_timeout','网页加载超时，请检查电脑网络');
+}
+async function target(){await initialized;if(!await tabExists(targetId)){const tab=await chrome.tabs.create({url:'https://www.bilibili.com/',active:true});targetId=tab.id;await remember()}return targetId!}
+async function catalog(url:string,kind:string,page:number,order:string='newest'):Promise<PageResult<unknown>>{
+  if(!urlAllowed(url))throw new RemoteError('invalid_url','只能读取哔哩哔哩网页');
+  if(!await tabExists(catalogId)){const tab=await chrome.tabs.create({url:'https://www.bilibili.com/',active:false});catalogId=tab.id;await chrome.tabs.update(catalogId!,{muted:true,autoDiscardable:false});await remember()}
+  await navigation(catalogId!,url);
+  let result:PageResult<unknown>=await content(catalogId!,'catalog.read',{kind});
+  const physical=order==='oldest'?result.totalPages-page+1:page;
+  if(physical<1||physical>result.totalPages)return {items:[],page,totalPages:result.totalPages,total:result.total};
+  if(physical>1)result=await content(catalogId!,'catalog.page',{page:physical,kind});
+  return {...result,items:order==='oldest'?[...result.items].reverse():result.items,page,nextPage:page<result.totalPages?page+1:undefined};
+}
+function serializedCatalog(job:()=>Promise<unknown>){const result=catalogSerial.then(job,job);catalogSerial=result.catch(()=>{});return result}
+async function openVideo(params:Record<string,unknown>){
+  const video=params.video as {url?:string;bvid?:string}|undefined;
+  if(!video?.url||!urlAllowed(video.url)||!/^BV[0-9A-Za-z]+$/.test(video.bvid??''))throw new RemoteError('invalid_video','视频地址无效');
+  const url=new URL(`https://www.bilibili.com/video/${video.bvid}/`);url.searchParams.set('p',String(Math.floor(bounded(params.part??1,1,10000))));
+  const id=await target();currentBinding={playbackId:params.playbackId,bvid:video.bvid,managed,time:params.time??0};await remember();
+  await navigation(id,url.href);
+  return content(id,'player.bind',currentBinding);
+}
+async function handle(req:Request):Promise<unknown>{
+  await initialized;if(req.v!==1||!req.id)throw new RemoteError('version_mismatch','协议版本不匹配');const p=req.params??{};
+  switch(req.method){
+    case 'tabs.list':return (await chrome.tabs.query({url:['https://www.bilibili.com/*']})).filter(t=>t.id!==catalogId).map(t=>({id:t.id,title:t.title??'哔哩哔哩',url:t.url,selected:t.id===targetId}));
+    case 'tabs.select':{const id=bounded(p.tabId,0,Number.MAX_SAFE_INTEGER);if(!await tabExists(id)||id===catalogId)throw new RemoteError('invalid_tab','这个标签页已经关闭或不属于哔哩哔哩');if(targetId&&await tabExists(targetId))await content(targetId,'player.manage',{enabled:false});targetId=id;currentBinding=undefined;managed=false;await remember();return content(id,'player.state')}
+    case 'search':{const query=String(p.query??'').trim();if(!query||query.length>200)throw new RemoteError('invalid_request','搜索词必须为 1～200 字');const kind=p.kind==='creators'?'creators':'videos';const url=`https://search.bilibili.com/${kind==='creators'?'upuser':'video'}?keyword=${encodeURIComponent(query)}`;return serializedCatalog(()=>catalog(url,kind,Math.floor(bounded(p.page??1,1,10000))))}
+    case 'creator.videos':return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/upload/video`,'videos',Math.floor(bounded(p.page??1,1,10000)),p.order==='oldest'?'oldest':'newest'));
+    case 'creator.collections':return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/lists`,'collections',Math.floor(bounded(p.page??1,1,10000))));
+    case 'collection.videos':return serializedCatalog(()=>catalog(String(p.url??''),'videos',Math.floor(bounded(p.page??1,1,10000))));
+    case 'player.open':return openVideo(p);
+    case 'player.manage':managed=Boolean(p.enabled);if(currentBinding)currentBinding.managed=managed;await remember();return targetId&&await tabExists(targetId)?content(targetId,'player.manage',{enabled:managed}):{};
+    case 'player.state':return targetId&&await tabExists(targetId)?content(targetId,'player.state'):{};
+    case 'player.command':{
+      const id=await target();if(p.action==='fullscreen'){
+        const tab=await chrome.tabs.get(id),win=await chrome.windows.get(tab.windowId);const enabled=Boolean(p.value);
+        if(enabled&&!windowStates.has(win.id!))windowStates.set(win.id!,win.state??'normal');
+        const result=await content(id,'player.command',p);await chrome.windows.update(win.id!,{state:enabled?'fullscreen':windowStates.get(win.id!)??'normal'});if(!enabled)windowStates.delete(win.id!);return result;
+      }return content(id,'player.command',p);
+    }
+    default:throw new RemoteError('unknown_method',`不支持的方法：${req.method}`);
+  }
+}
+chrome.runtime.onMessage.addListener((message,sender,respond)=>{
+  if(message.popup){if(message.popup==='connect')connect();respond({connected:!!port,targetId});return}
+  if(sender.tab?.id!==targetId)return;
+  if(message.event==='content.ready'){if(currentBinding)void content(targetId!,'player.attach',currentBinding).catch(()=>{});return;}
+  if(message.event==='player.partEnded'&&managed&&currentBinding&&message.data?.playbackId===currentBinding.playbackId){
+    const state=message.data;openVideo({video:{url:state.url,bvid:state.bvid},part:state.part+1,time:0,playbackId:state.playbackId}).catch(error=>send('player.error',{...state,errorCode:error.code??'player_error',errorMessage:error.message}));return;
+  }
+  if(['player.changed','player.ended','player.error'].includes(message.event))send(message.event,message.data);
+});
+chrome.tabs.onRemoved.addListener(id=>{if(id===targetId){targetId=undefined;currentBinding=undefined;managed=false;send('target.closed',{});void remember()}if(id===catalogId){catalogId=undefined;void remember()}});
+chrome.tabs.onUpdated.addListener((id,change)=>{
+  if(id!==targetId||!currentBinding)return;
+  if(change.url&&change.url.match(/\/video\/(BV[0-9A-Za-z]+)/)?.[1]!==currentBinding.bvid){currentBinding=undefined;managed=false;void remember();send('target.navigated',{});return;}
+  if(change.status==='complete')void content(id,'player.attach',currentBinding).catch(()=>{});
+});
+chrome.runtime.onInstalled.addListener(()=>{connect();void chrome.alarms.create('reconnect',{periodInMinutes:.5})});
+chrome.runtime.onStartup.addListener(connect);chrome.alarms.onAlarm.addListener(connect);connect();
