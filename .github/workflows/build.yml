@@ -50,6 +50,13 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Generate and diagnose Windows-compatible certificates
+        run: |
+          dotnet run --project tests/BiliRemote.CertificateFixture -c Release -- artifacts/ios-transport-fixture
+          swift scripts/diagnose-certificate.swift artifacts/ios-transport-fixture/server.cer artifacts/ios-transport-fixture/legacy.cer
       - name: Generate Xcode project
         run: |
           xcodebuild -version
