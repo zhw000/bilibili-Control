@@ -162,5 +162,5 @@ public sealed class RemoteServer:IDisposable
         }
     }
     public void Revoke(string deviceId){Security.Revoke(deviceId);foreach(var peer in peers.Values.Where(p=>p.DeviceId==deviceId))peer.Socket.Abort();Changed?.Invoke();}
-    public void Dispose(){Save(true);lifetime.Cancel();foreach(var peer in peers.Values)peer.Socket.Abort();bridge.Dispose();audio.Dispose();if(app!=null)_ = app.DisposeAsync();}
+    public void Dispose(){Save(true);lifetime.Cancel();foreach(var peer in peers.Values)peer.Socket.Abort();bridge.Dispose();audio.Dispose();if(app!=null)_ = app.DisposeAsync();Security.Dispose();}
 }

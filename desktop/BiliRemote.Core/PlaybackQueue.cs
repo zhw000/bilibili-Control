@@ -55,14 +55,32 @@ public sealed class PlaybackQueue
     }
     private async Task StartCurrent(int part = 1, double time = 0)
     {
-        if (index < 0 || index >= items.Count) return;
-        playbackId = Guid.NewGuid().ToString("N"); active = true; message = null;
-        lastState = new(Bvid: items[index].Bvid, Part: part, CurrentTime: time, PlaybackId: playbackId);
-        await manage(true);
-        try { await play(items[index], playbackId, part, time); }
-        catch { active = false; message = "播放未成功，点击继续播放重试"; await manage(false); throw; }
-        finally { Notify(); }
+        while (index >= 0 && index < items.Count)
+        {
+            playbackId = Guid.NewGuid().ToString("N"); active = true; message = null;
+            lastState = new(Bvid: items[index].Bvid, Part: part, CurrentTime: time, PlaybackId: playbackId);
+            await manage(true);
+            try { await play(items[index], playbackId, part, time); Notify(); return; }
+            catch (RemoteException ex) when (ex.Code == "video_unavailable")
+            {
+                items[index] = items[index] with { UnavailableReason = ex.Message };
+                if (await NextIndex()) { part = 1; time = 0; continue; }
+                await Complete(); return;
+            }
+            catch { active = false; message = "播放未成功，点击继续播放重试"; await manage(false); Notify(); throw; }
+        }
     }
+    private async Task<bool> NextIndex()
+    {
+        while (index + 1 >= items.Count && nextPage is int page && source != null)
+        {
+            var batch = await load(source, page); Append(batch.Items);
+            nextPage = batch.NextPage is int following && following > page ? following : null;
+        }
+        if (index + 1 >= items.Count) return false;
+        index++; return true;
+    }
+    private async Task Complete() { active = false; message = "已播放完全部视频"; playbackId = null; await manage(false); Notify(); }
     public async Task Resume()
     {
         await gate.WaitAsync();
@@ -83,13 +101,8 @@ public sealed class PlaybackQueue
             if (expectedPlaybackId != null && (!active || expectedPlaybackId != playbackId)) return;
             if (index < 0) throw new RemoteException("empty_queue", "播放队列为空");
             if (direction < 0) { index = Math.Max(0, index - 1); await StartCurrent(); return; }
-            while (index + 1 >= items.Count && nextPage is int page && source != null)
-            {
-                var batch = await load(source, page); Append(batch.Items);
-                nextPage = batch.NextPage is int following && following > page ? following : null;
-            }
-            if (index + 1 >= items.Count) { active = false; message = "已播放完全部视频"; playbackId = null; await manage(false); Notify(); return; }
-            index++; await StartCurrent();
+            if (!await NextIndex()) { await Complete(); return; }
+            await StartCurrent();
         }
         catch (Exception ex) { active = false; message = ex.Message; Notify(); throw; }
         finally { gate.Release(); }

@@ -7,6 +7,8 @@ try {
     if (-not $SkipTests) {
         & $Dotnet test tests/BiliRemote.Tests -c Release --no-restore
         if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+        & $Dotnet run --project tests/BiliRemote.Integration -c Release --no-restore -- --soak-seconds 10
+        if ($LASTEXITCODE -ne 0) { throw 'Transport integration tests failed' }
         npm.cmd ci --prefix extension --no-audit --no-fund
         if ($LASTEXITCODE -ne 0) { throw 'npm restore failed' }
         npm.cmd run typecheck --prefix extension

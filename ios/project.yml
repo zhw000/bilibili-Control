@@ -16,10 +16,9 @@ targets:
     platform: iOS
     sources:
       - BiliRemote
-    info:
-      path: BiliRemote/Info.plist
     settings:
       base:
+        INFOPLIST_FILE: BiliRemote/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: dev.biliremote.ios
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
@@ -33,6 +32,16 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+  BiliRemoteUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - BiliRemoteUITests
+    dependencies:
+      - target: BiliRemote
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   BiliRemote:
     build:
@@ -41,3 +50,4 @@ schemes:
     test:
       targets:
         - BiliRemoteTests
+        - BiliRemoteUITests

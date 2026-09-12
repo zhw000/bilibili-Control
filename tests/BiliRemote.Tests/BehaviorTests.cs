@@ -43,6 +43,24 @@ public sealed class BehaviorTests
         queue.Restore(new(new("manual"),[new("BV1","One","https://www.bilibili.com/video/BV1")],0,null,true,false,null,"old"),new(CurrentTime:42));
         Assert.False(queue.Snapshot.Active); Assert.True(queue.Snapshot.CanResume);
     }
+    [Fact] public async Task SkipsVideoUnavailableDuringInitialOpen()
+    {
+        var played = new List<string>();
+        var first = new VideoItem("BV1", "Deleted", "https://www.bilibili.com/video/BV1");
+        var queue = new PlaybackQueue((_,_)=>throw new NotSupportedException(),(video,_,_,_)=>
+        {
+            if(video.Bvid=="BV1")throw new RemoteException("video_unavailable","视频已删除");
+            played.Add(video.Bvid);return Task.CompletedTask;
+        },_=>Task.CompletedTask);
+        await queue.Start(new("manual",Items:[first,first with{Bvid="BV2"}]));
+        Assert.Equal(new[]{"BV2"},played);Assert.Equal(1,queue.Snapshot.Index);Assert.Equal("视频已删除",queue.Snapshot.Items[0].UnavailableReason);
+    }
+    [Fact] public async Task UnownedEndedEventDoesNotAdvance()
+    {
+        var queue = new PlaybackQueue((_,_)=>throw new NotSupportedException(),(_,_,_,_)=>Task.CompletedTask,_=>Task.CompletedTask);
+        await queue.Start(new("manual",Items:[new("BV1","One","https://www.bilibili.com/video/BV1")]));
+        await queue.Ended(new(Ended:true));Assert.True(queue.Snapshot.Active);
+    }
     [Theory][InlineData("https://www.bilibili.com/video/BV1",true)][InlineData("https://www.bilibili.com.evil.test/video/BV1",false)][InlineData("file:///etc/passwd",false)]
     public void RestrictsNavigation(string url,bool allowed)=>Assert.Equal(allowed,Validation.BilibiliUrl(url));
 }

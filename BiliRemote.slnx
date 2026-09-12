@@ -3,4 +3,5 @@
   <Project Path="desktop/BiliRemote.Host/BiliRemote.Host.csproj" />
   <Project Path="desktop/BiliRemote.Native/BiliRemote.Native.csproj" />
   <Project Path="tests/BiliRemote.Tests/BiliRemote.Tests.csproj" />
+  <Project Path="tests/BiliRemote.Integration/BiliRemote.Integration.csproj" />
 </Solution>
