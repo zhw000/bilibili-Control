@@ -6,7 +6,7 @@
 
 ## 安装
 
-1. 安装 `BiliRemote-Setup-0.1.0.exe`，启动电脑助手。也可完整解压 `BiliRemote-Windows.zip`，用 PowerShell 运行其中的 `install.ps1` 注册当前用户的浏览器通信组件，然后启动 `BiliRemote.exe`。便携目录注册后不要移动。
+1. 安装 `BiliRemote-Setup-0.2.0.exe`，启动电脑助手。也可完整解压 `BiliRemote-Windows.zip`，用 PowerShell 运行其中的 `install.ps1` 注册当前用户的浏览器通信组件，然后启动 `BiliRemote.exe`。便携目录注册后不要移动。
 2. 在 Chrome 打开 `chrome://extensions`，开启开发者模式，点击“加载已解压的扩展程序”，选择助手安装目录内的 `extension` 文件夹。默认安装目录为 `%LOCALAPPDATA%\Programs\BiliRemote`。扩展固定 ID 为 `penfpdlcbljgooeeabnkphfggjhbfnnj`。
 3. 在助手中点击“允许局域网连接”，接受 Windows 的管理员提示。这条规则只允许专用网络中同一子网连接该程序；网络设为公用时不会生效。
 4. 给 `BiliRemote-unsigned.ipa` 使用你自己的方式签名并安装到 iPhone。它是真机 arm64 应用，未包含个人证书或描述文件。
@@ -18,6 +18,7 @@
 - 在“发现”搜索视频或 UP 主；进入 UP 主可查看全部投稿、合集和系列。
 - “全部播放”在电脑维护队列，手机锁屏或离开 App 后，电脑仍可继续播放。
 - “播放”页支持暂停、上一项/下一项、前后 10 秒、拖动进度、输入准确时间、0.5～2 倍速、弹幕与全屏。
+- 播放列表位于播放控制下方，整页向下滚动可见；合集/全部投稿显示队列，单独视频显示相关推荐。0.2.0 不再提供独立的队列标签页。[升级说明](docs/RELEASE-0.2.0.md)。
 - 网页音量和电脑音量分开控制；电脑音量作用于 Windows 当前默认输出设备。
 - “设备”页可选择已有的播放标签页。选择后控制目标固定，不会随电脑当前焦点切换。
 - 助手重启后会恢复上次队列与进度，点击“继续播放”恢复，不会自行出声。
