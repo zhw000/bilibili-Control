@@ -116,12 +116,13 @@ public sealed class RemoteServer:IDisposable
             case "queue.start":{var source=Wire.Decode<QueueSource>(p);if(source.Kind is not("manual" or "creator" or "collection"))throw new RemoteException("invalid_request","未知队列来源");if(source.Kind=="manual"&&source.Items?.Any(v=>!Validation.BilibiliUrl(v.Url))==true)throw new RemoteException("invalid_url","视频地址无效");await Queue.Start(source);return Wire.Element(Queue.Snapshot);}
             case "queue.next":await Queue.Move(1);return Wire.Element(Queue.Snapshot);
             case "queue.previous":await Queue.Move(-1);return Wire.Element(Queue.Snapshot);
+            case "queue.select":await Queue.Select(p.Text("bvid"));return Wire.Element(Queue.Snapshot);
             case "queue.resume":await Queue.Resume();return Wire.Element(Queue.Snapshot);
             case "queue.stop":await Queue.Stop("已停止自动连播");return Wire.Element(Queue.Snapshot);
             case "player.open":{var video=Wire.Decode<VideoItem>(p.GetProperty("video"));await Queue.Start(new("manual",Items:[video]));return Wire.Element(Queue.Snapshot);}
             case "tabs.select":await Queue.Stop("已切换控制标签页");var selected=await bridge.Call(request.Method,p);player=Wire.Decode<PlayerState>(selected);Publish();return selected;
             case "player.command":{var result=await bridge.Call(request.Method,p);player=Wire.Decode<PlayerState>(result);Queue.Observe(player);Publish();return result;}
-            case "tabs.list":case "search":case "creator.videos":case "creator.collections":case "collection.videos":return await bridge.Call(request.Method,p);
+            case "tabs.list":case "search":case "creator.videos":case "creator.collections":case "collection.videos":case "player.related":return await bridge.Call(request.Method,p);
             default:throw new RemoteException("unknown_method","不支持的操作");
         }
     }

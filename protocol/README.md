@@ -34,9 +34,11 @@ The host sends a complete snapshot immediately after connecting and when state c
 | `tabs.list` | `{}` | `{id,title,url,selected}[]` |
 | `tabs.select` | `tabId` | Player state; stops previous queue |
 | `player.open` | `video` | Replaces queue with this video |
+| `player.related` | `bvid` | `{bvid,items: VideoItem[]}` from the selected playback tab's recommendations; never navigates or changes playback |
 | `player.command` | `action`, optional `value` | Player state |
 | `queue.start` | `kind: manual / creator / collection`, optional `items / creatorId / url`, `order` | Queue snapshot |
 | `queue.previous / queue.next / queue.resume / queue.stop` | `{}` | Queue snapshot |
+| `queue.select` | `bvid` | Starts an already-loaded queue item, preserving source and pending pages; stale BVID returns `queue_changed` |
 | `system.volume` | `value: 0...1` | System volume |
 | `system.mute` | `value: boolean` | System volume |
 
@@ -44,7 +46,9 @@ Player actions: `play`, `pause`, `seek` (absolute seconds), `seekBy` (relative s
 
 Paged results contain `items`, `page`, `totalPages`, optional `total`, and optional `nextPage`. `page` is a logical page: oldest-first reverses the website's page order and each page's items. Video objects contain `bvid`, `title`, `url`, optional `cover`, `duration`, `creatorId`, `creatorName`, and `unavailableReason`. Creator objects contain `id,name,url,avatar?,description?`; collection objects contain `id,title,url,cover?,count?`.
 
-Player state contains `bvid,title,url,currentTime,duration,paused,ended,part,partCount,volume,muted,rate,danmaku,fullscreen,playbackId?,errorCode?,errorMessage?`. System volume contains `value,muted,deviceName,available`. Queue state contains `source?,items,index,nextPage?,active,canResume,message?,playbackId?`.
+Player state contains `bvid,title,url,currentTime,duration,paused,ended,part,partCount,volume,muted,rate,danmaku,fullscreen,playbackId?,errorCode?,errorMessage?,cover?`. System volume contains `value,muted,deviceName,available`. Queue state contains `source?,items,index,nextPage?,active,canResume,message?,playbackId?`.
+
+The iOS playback page contains one vertical scroll view. Creator/collection or multi-item manual queues appear inline; a single manually opened video displays recommendations instead. Results carry the requested BVID so responses from an earlier video cannot replace the new list. Selecting a recommendation starts that single video; it does not opt into automatic recommendation playback.
 
 ## Browser adaptation
 

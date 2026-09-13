@@ -7,23 +7,31 @@ export function durationSeconds(text:string):number|undefined {
 const txt=(node:Element|null)=>node?.textContent?.replace(/\s+/g,' ').trim()??'';
 const outsideHeader=(a:Element)=>!a.closest('header,nav,footer,.bili-header,.bili-header__bar,.international-header,.header-channel,.nav-bar,.bili-footer,.international-footer,.footer,.footer-wrp');
 function card(a:Element):Element {
-  return a.closest('.bili-video-card')??a.closest('.bili-cover-card,.video-card,.small-item,.upload-video-card,.bili-user-profile-view,.bili-user-card,.b-user-info-card,.user-item,.user-card,.video-list-item,.list-item')??a.parentElement?.parentElement??a;
+  return a.closest('.bili-video-card,.video-page-card-small')??a.closest('.bili-cover-card,.video-card,.small-item,.upload-video-card,.bili-user-profile-view,.bili-user-card,.b-user-info-card,.user-item,.user-card,.video-list-item,.list-item')??a.parentElement?.parentElement??a;
 }
 function imageOf(node:Element):string|undefined {
   const image=node.querySelector('img');const source=image?.getAttribute('src')||image?.getAttribute('data-src');
   if(!source||source.startsWith('data:'))return undefined;
-  try{return new URL(source,location.href).href}catch{return undefined}
+  return coverUrl(source);
+}
+export function coverUrl(source:string|null|undefined):string|undefined {
+  if(!source)return undefined;
+  try{const url=new URL(source,location.href);if(url.protocol!=='https:')return undefined;
+    // Use the original cover rather than a browser-specific AVIF resize variant.
+    if(url.hostname.endsWith('.hdslb.com'))url.pathname=url.pathname.split('@')[0];
+    return url.href;
+  }catch{return undefined}
 }
 export function videoItems(root:ParentNode=document):VideoItem[] {
   const found=new Map<string,VideoItem>();
   for(const anchor of root.querySelectorAll<HTMLAnchorElement>('a[href*="/video/BV"]')){
     if(!outsideHeader(anchor))continue;
     const bvid=anchor.href.match(/\/video\/(BV[0-9A-Za-z]+)/)?.[1];if(!bvid)continue;
-    const row=card(anchor);const titleAnchor=row.querySelector<HTMLAnchorElement>('a[title],h3 a,.bili-video-card__title a,.bili-video-card__info--tit a,.bili-cover-card__info-title,a.title');
+    const row=card(anchor);const titleAnchor=row.querySelector<HTMLElement>('a[title],h3 a,.bili-video-card__title a,.bili-video-card__info--tit a,.bili-cover-card__info-title,a.title,.info .title');
     const title=titleAnchor?.getAttribute('title')||txt(titleAnchor)||anchor.getAttribute('title')||txt(anchor);
     if(!title||/^[\d\s万亿.:]+$/.test(title))continue;
     const owner=row.querySelector<HTMLAnchorElement>('a[href*="space.bilibili.com/"]');
-    const durationLabel=[...row.querySelectorAll('.bili-video-card__stats__duration,.bili-cover-card__stat span')].map(txt).find(s=>/^\d{1,3}:\d{2}(?::\d{2})?$/.test(s));
+    const durationLabel=[...row.querySelectorAll('.bili-video-card__stats__duration,.bili-cover-card__stat span,.duration')].map(txt).find(s=>/^\d{1,3}:\d{2}(?::\d{2})?$/.test(s));
     const result:VideoItem={bvid,title,url:`https://www.bilibili.com/video/${bvid}/`,cover:imageOf(row),duration:durationSeconds(durationLabel??txt(row)),creatorId:owner?.href.match(/space\.bilibili\.com\/(\d+)/)?.[1],creatorName:txt(owner).replace(/\s*[·•]\s*.*$/,'')};
     const old=found.get(bvid);if(!old||result.title.length>old.title.length)found.set(bvid,{...old,...result});
   }

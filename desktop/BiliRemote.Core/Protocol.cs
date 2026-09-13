@@ -33,7 +33,7 @@ public sealed record CollectionItem(string Id, string Title, string Url, string?
 public sealed record PageResult<T>(IReadOnlyList<T> Items, int Page, int TotalPages, int? Total = null, int? NextPage = null);
 public sealed record QueueSource(string Kind, string? CreatorId = null, string? Url = null, string Order = "newest", IReadOnlyList<VideoItem>? Items = null);
 public sealed record QueueSnapshot(QueueSource? Source, IReadOnlyList<VideoItem> Items, int Index, int? NextPage, bool Active, bool CanResume, string? Message, string? PlaybackId);
-public sealed record PlayerState(string Bvid = "", string Title = "", string Url = "", double CurrentTime = 0, double Duration = 0, bool Paused = true, bool Ended = false, int Part = 1, int PartCount = 1, double Volume = 1, bool Muted = false, double Rate = 1, bool Danmaku = true, bool Fullscreen = false, string? PlaybackId = null, string? ErrorCode = null, string? ErrorMessage = null);
+public sealed record PlayerState(string Bvid = "", string Title = "", string Url = "", double CurrentTime = 0, double Duration = 0, bool Paused = true, bool Ended = false, int Part = 1, int PartCount = 1, double Volume = 1, bool Muted = false, double Rate = 1, bool Danmaku = true, bool Fullscreen = false, string? PlaybackId = null, string? ErrorCode = null, string? ErrorMessage = null, string? Cover = null);
 public sealed record SystemVolume(double Value, bool Muted, string DeviceName, bool Available = true);
 
 public static class Validation

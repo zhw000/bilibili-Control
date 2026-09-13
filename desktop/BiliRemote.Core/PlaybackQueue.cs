@@ -129,4 +129,17 @@ public sealed class PlaybackQueue
         finally { gate.Release(); }
         await Move(1, state.PlaybackId);
     }
+    public async Task Select(string bvid)
+    {
+        await gate.WaitAsync();
+        try
+        {
+            var selected = items.FindIndex(item => item.Bvid == bvid);
+            if (selected < 0) throw new RemoteException("queue_changed", "该视频已不在当前队列，请刷新后重试");
+            index = selected;
+            try { await StartCurrent(); }
+            catch (Exception ex) { await Suspend(ex.Message); throw; }
+        }
+        finally { gate.Release(); }
+    }
 }

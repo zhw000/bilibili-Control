@@ -12,15 +12,56 @@ final class ScreenTests: XCTestCase {
     }
     @MainActor func testPlaybackLayoutWithTestState() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--preview-state"]; app.launch()
-        XCTAssertTrue(app.staticTexts["保持好奇，探索每一个新世界"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["暂停"].exists)
+        XCTAssertTrue(app.staticTexts["playerTitle"].waitForExistence(timeout: 10))
+        assertPlayerFits(app)
         capture(app, "03-playback")
-        app.swipeUp()
-        XCTAssertTrue(app.staticTexts["电脑音量"].exists)
+        scrollTo(app.buttons["声音设置"], in: app)
+        app.buttons["声音设置"].tap()
+        scrollTo(app.staticTexts["电脑音量"], in: app)
         capture(app, "04-volume")
-        app.tabBars.buttons["队列"].tap()
-        XCTAssertTrue(app.staticTexts["下一站，发现更多有趣的事"].waitForExistence(timeout: 5))
-        capture(app, "05-queue")
+        scrollTo(app.buttons["queueItem-BVPreview2"], in: app)
+        XCTAssertFalse(app.tabBars.buttons["队列"].exists)
+        XCTAssertEqual(app.scrollViews.count, 1)
+        capture(app, "05-inline-queue")
+    }
+    @MainActor func testRelatedVideosSharePlayerScrollAndFitLandscape() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--preview-state", "--preview-related"]; app.launch()
+        XCTAssertTrue(app.staticTexts["playerTitle"].waitForExistence(timeout: 10))
+        assertPlayerFits(app)
+        scrollTo(app.staticTexts["相关视频 1 · 和朋友一起发现新的风景"], in: app)
+        capture(app, "06-inline-related")
+        scrollTo(app.staticTexts["相关视频 12 · 和朋友一起发现新的风景"], in: app)
+        XCTAssertEqual(app.scrollViews.count, 1)
+        capture(app, "07-related-bottom")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        for _ in 0..<10 { if app.staticTexts["playerTitle"].isHittable { break }; app.swipeDown() }
+        assertPlayerFits(app)
+        capture(app, "08-landscape")
+    }
+    @MainActor func testLargeTextKeepsControlsInsideScreen() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--preview-state", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["playerTitle"].waitForExistence(timeout: 10))
+        assertPlayerFits(app)
+        scrollTo(app.buttons["queueItem-BVPreview2"], in: app)
+        capture(app, "09-large-text")
+    }
+    @MainActor private func assertPlayerFits(_ app: XCUIApplication) {
+        let cover = app.descendants(matching: .any).matching(identifier: "playerCover").firstMatch
+        XCTAssertTrue(cover.exists)
+        XCTAssertEqual(cover.frame.width / cover.frame.height, 16.0 / 9.0, accuracy: 0.02)
+        let elements = [cover, app.staticTexts["playerTitle"], app.buttons["currentTime"], app.staticTexts["duration"], app.buttons["上一个视频"], app.buttons["下一个视频"], app.buttons["mainPlaybackButton"]]
+        for element in elements {
+            XCTAssertTrue(element.exists)
+            XCTAssertGreaterThanOrEqual(element.frame.minX, app.frame.minX + 8, element.identifier)
+            XCTAssertLessThanOrEqual(element.frame.maxX, app.frame.maxX - 8, element.identifier)
+        }
+    }
+    @MainActor private func scrollTo(_ element: XCUIElement, in app: XCUIApplication) {
+        for _ in 0..<12 { if element.isHittable { return }; app.swipeUp() }
+        XCTAssertTrue(element.isHittable)
     }
     @MainActor private func capture(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)

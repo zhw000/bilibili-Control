@@ -67,6 +67,11 @@ var reconnected = await phone.NextEvent();
 Check(reconnected.GetProperty("data").GetProperty("queue").GetProperty("index").GetInt32() == 2, "phone reconnect preserves desktop queue");
 await phone.Request("player.command", new { action = "seekBy", value = 10 }, requestId);
 Check(browser.RelativeCommands == 1, "deduplication survives phone reconnect");
+var beforeRelated = browser.State;
+var related = await phone.Request("player.related", new { bvid = beforeRelated.Bvid });
+Check(related.Flag("ok") && related.GetProperty("result").GetProperty("items").GetArrayLength() == 1 && browser.State == beforeRelated, "related videos roundtrip leaves playback unchanged");
+var selection = await phone.Request("queue.select", new { bvid = "BV1test" });
+Check(selection.Flag("ok") && server.Queue.Snapshot.Index == 0 && server.Queue.Snapshot.Items.Count == 3 && server.Queue.Snapshot.Source?.Kind == "creator", "inline selection preserves creator playlist");
 var seconds = args.Length == 2 && args[0] == "--soak-seconds" ? int.Parse(args[1]) : 0;
 var start = DateTimeOffset.UtcNow;
 for (var tick = 0; tick < seconds; tick++)
@@ -149,6 +154,8 @@ sealed class BrowserFixture : IDisposable
                         case "player.command":
                             if (request.Params.Text("action") == "seekBy") { RelativeCommands++; State = State with { CurrentTime = State.CurrentTime + request.Params.Number("value") }; }
                             result = State; break;
+                        case "player.related":
+                            result = new { bvid = State.Bvid, items = new[] { new VideoItem("BVRelated", "Related", "https://www.bilibili.com/video/BVRelated/") } }; break;
                         default: result = State; break;
                     }
                     await Send(Reply.Success(request.Id, Wire.Element(result)));

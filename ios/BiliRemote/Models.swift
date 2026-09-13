@@ -45,6 +45,15 @@ struct PlayerState: Codable {
     var volume: Double = 1, muted = false, rate: Double = 1
     var danmaku = true, fullscreen = false
     var playbackId: String?, errorCode: String?, errorMessage: String?
+    var cover: String?
+}
+struct RelatedVideos: Decodable { let bvid: String; let items: [VideoItem] }
+extension QueueSnapshot {
+    func isPlaylist(for player: PlayerState) -> Bool {
+        let multiple = source?.kind == "creator" || source?.kind == "collection" || (source?.kind == "manual" && items.count > 1)
+        guard multiple, items.indices.contains(index) else { return false }
+        return items[index].bvid == player.bvid || (player.bvid.isEmpty && canResume)
+    }
 }
 struct SystemVolume: Codable { var value: Double = 0; var muted = false; var deviceName = "默认音频输出"; var available = false }
 struct Snapshot: Codable {

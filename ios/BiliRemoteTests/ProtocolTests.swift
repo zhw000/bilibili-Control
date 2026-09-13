@@ -2,6 +2,22 @@ import XCTest
 @testable import BiliRemote
 
 final class ProtocolTests: XCTestCase {
+    func testPlaylistAndRelatedVideoSelection() {
+        let video = VideoItem(bvid: "BV1", title: "第一条", url: "https://www.bilibili.com/video/BV1/")
+        let player = PlayerState(bvid: "BV1")
+        var queue = QueueSnapshot(source: QueueSource(kind: "manual"), items: [video], index: 0, active: true)
+        XCTAssertFalse(queue.isPlaylist(for: player), "A single manually opened video shows recommendations even while its multi-part queue is active")
+        queue.source = QueueSource(kind: "creator", creatorId: "123")
+        XCTAssertTrue(queue.isPlaylist(for: player))
+        queue.source = QueueSource(kind: "collection", url: "https://space.bilibili.com/123/lists/1")
+        XCTAssertTrue(queue.isPlaylist(for: player))
+        XCTAssertFalse(queue.isPlaylist(for: PlayerState(bvid: "BVElsewhere")), "Manual browser navigation must not display a stale playlist")
+        queue.active = false; queue.canResume = true
+        XCTAssertTrue(queue.isPlaylist(for: player), "A suspended playlist remains available to resume")
+        queue.source = QueueSource(kind: "manual")
+        queue.items.append(VideoItem(bvid: "BV2", title: "第二条", url: "https://www.bilibili.com/video/BV2/"))
+        XCTAssertTrue(queue.isPlaylist(for: player))
+    }
     func testExactTimeParsing() throws {
         XCTAssertEqual(try Timecode.parse("12:30"), 750)
         XCTAssertEqual(try Timecode.parse("1:02:03"), 3723)

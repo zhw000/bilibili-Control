@@ -1,4 +1,4 @@
-#define AppVersion "0.1.0"
+#define AppVersion "0.2.0"
 [Setup]
 AppId={{D09A7BB9-AF35-49C9-9A6E-9E11B42C81CF}
 AppName=哔哩遥控

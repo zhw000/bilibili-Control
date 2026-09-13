@@ -20,7 +20,6 @@ struct RootView: View {
         TabView(selection: $model.selectedTab) {
             NavigationStack { SearchView().safeAreaInset(edge: .bottom) { MiniPlayer() } }.tabItem { Label("发现", systemImage: "magnifyingglass") }.tag(0)
             NavigationStack { PlayerView() }.tabItem { Label("播放", systemImage: "play.circle") }.tag(1)
-            NavigationStack { QueueView().safeAreaInset(edge: .bottom) { MiniPlayer() } }.tabItem { Label("队列", systemImage: "list.bullet.rectangle") }.tag(2)
             NavigationStack { DevicesView() }.tabItem { Label("设备", systemImage: "desktopcomputer") }.tag(3)
         }
     }
@@ -28,9 +27,29 @@ struct RootView: View {
 struct CoverView: View {
     let url: String?
     var body: some View {
-        AsyncImage(url: url.flatMap(URL.init(string:))) { image in image.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.biliPink.opacity(0.10)).overlay { Image(systemName: "play.rectangle.fill").font(.title2).foregroundStyle(Color.biliPink.opacity(0.5)) } }
-            .clipped()
+        Rectangle().fill(Color.biliPink.opacity(0.10))
+            .overlay {
+                // Overlay content cannot enlarge the frame when a large image finishes loading.
+                #if DEBUG
+                if url == "preview-cover" { Image(uiImage: Self.previewImage).resizable().scaledToFill() }
+                else { remoteImage }
+                #else
+                remoteImage
+                #endif
+            }.clipped()
     }
+    private var remoteImage: some View {
+        AsyncImage(url: url.flatMap(URL.init(string:))) { image in image.resizable().scaledToFill() }
+        placeholder: { Image(systemName: "play.rectangle.fill").font(.title2).foregroundStyle(Color.biliPink.opacity(0.5)) }
+    }
+    #if DEBUG
+    private static let previewImage = UIGraphicsImageRenderer(size: CGSize(width: 1600, height: 900)).image { context in
+        UIColor(red: 0.16, green: 0.38, blue: 0.39, alpha: 1).setFill(); context.fill(CGRect(x: 0, y: 0, width: 1600, height: 900))
+        UIColor(red: 0.83, green: 0.90, blue: 0.77, alpha: 1).setFill(); context.fill(CGRect(x: 0, y: 520, width: 1600, height: 380))
+        UIColor(red: 0.96, green: 0.76, blue: 0.51, alpha: 1).setFill(); context.cgContext.fillEllipse(in: CGRect(x: 1150, y: 90, width: 250, height: 250))
+        ("一起去看世界" as NSString).draw(at: CGPoint(x: 100, y: 290), withAttributes: [.font: UIFont.boldSystemFont(ofSize: 100), .foregroundColor: UIColor.white])
+    }
+    #endif
 }
 struct MiniPlayer: View {
     @EnvironmentObject private var model: RemoteModel
@@ -53,7 +72,7 @@ struct VideoRow: View {
         VStack(alignment: .leading, spacing: 7) {
             Button { model.play(video) } label: {
                 HStack(alignment: .top, spacing: 12) {
-                    CoverView(url: video.cover).frame(width: 125, height: 78).clipShape(RoundedRectangle(cornerRadius: 10))
+                    CoverView(url: video.cover).frame(width: 112, height: 63).clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(alignment: .bottomTrailing) { if let duration = video.duration { Text(Timecode.format(duration)).font(.caption2.monospacedDigit()).padding(4).background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 4)).foregroundStyle(.white).padding(5) } }
                     VStack(alignment: .leading, spacing: 6) { Text(video.title).font(.subheadline.weight(.medium)).lineLimit(3); if let reason = video.unavailableReason { Text(reason).font(.caption).foregroundStyle(.secondary) } }.frame(maxWidth: .infinity, alignment: .leading)
                 }.foregroundStyle(.primary)

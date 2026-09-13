@@ -1,4 +1,5 @@
-import {openCollection,readCatalog,turnPage} from './catalog';
+import {coverUrl,openCollection,readCatalog,turnPage} from './catalog';
+import {readRelated} from './related';
 import {bounded,RemoteError} from './types';
 import {danmakuControl,danmakuOn,isWebFullscreen,partInfo} from './player-dom';
 
@@ -6,7 +7,7 @@ let managed=false,playbackId:string|undefined,endedSent=false,lastError='';
 let previousAutoplay:boolean|undefined;
 function video():HTMLVideoElement|null{return document.querySelector<HTMLVideoElement>('.bpx-player-video-wrap video,video')}
 function emit(event:string,data:unknown){chrome.runtime.sendMessage({event,data}).catch(()=>{})}
-function snapshot(){const v=video();return {bvid:location.pathname.match(/BV[\w]+/)?.[0]??'',title:document.querySelector('h1')?.textContent?.trim()??document.title.replace(/_哔哩哔哩.*$/,''),url:location.href,currentTime:Number.isFinite(v?.currentTime)?v!.currentTime:0,duration:Number.isFinite(v?.duration)?v!.duration:0,paused:v?.paused??true,ended:v?.ended??false,...partInfo(),volume:v?.volume??1,muted:v?.muted??false,rate:v?.playbackRate??1,danmaku:danmakuOn(),fullscreen:isWebFullscreen(),playbackId}}
+function snapshot(){const v=video();return {bvid:location.pathname.match(/BV[\w]+/)?.[0]??'',title:document.querySelector('h1')?.textContent?.trim()??document.title.replace(/_哔哩哔哩.*$/,''),url:location.href,cover:coverUrl(document.querySelector('meta[property="og:image"]')?.getAttribute('content')),currentTime:Number.isFinite(v?.currentTime)?v!.currentTime:0,duration:Number.isFinite(v?.duration)?v!.duration:0,paused:v?.paused??true,ended:v?.ended??false,...partInfo(),volume:v?.volume??1,muted:v?.muted??false,rate:v?.playbackRate??1,danmaku:danmakuOn(),fullscreen:isWebFullscreen(),playbackId}}
 function autoplayControl():HTMLElement|null{return document.querySelector('.next-play input,.auto-play input,.video-pod__auto-play input,.bpx-player-ctrl-setting-autoplay input,.bpx-player-ctrl-setting-autoplay .bui-switch-input')}
 function manage(value:boolean,original?:unknown){
   const control=autoplayControl();
@@ -54,6 +55,9 @@ async function command(params:Record<string,unknown>){
   emit('player.changed',snapshot());return snapshot();
 }
 chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
+  if(message.method==='player.related'){
+    readRelated(String(message.params?.bvid??'')).then(result=>respond({ok:true,result}),error=>respond({ok:false,error:{code:error.code??'extension_error',message:error.message}}));return true;
+  }
   (async()=>{switch(message.method){case 'catalog.read':return readCatalog(message.params.kind);case 'catalog.page':await turnPage(message.params.page,message.params.kind);return readCatalog(message.params.kind);case 'catalog.openCollection':return openCollection(message.params.title,message.params.index);case 'player.bind':return bind(message.params);case 'player.attach':return attach(message.params);case 'player.manage':manage(Boolean(message.params.enabled));return snapshot();case 'player.command':return command(message.params);case 'player.state':return snapshot();default:throw new RemoteError('unknown_method','未知扩展操作')}})().then(result=>respond({ok:true,result}),error=>respond({ok:false,error:{code:error.code??'extension_error',message:error.message}}));
   return true;
 });

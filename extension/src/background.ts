@@ -78,6 +78,13 @@ async function handle(req:Request):Promise<unknown>{
     case 'creator.collections':return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/lists`,'collections',Math.floor(bounded(p.page??1,1,10000))));
     case 'collection.videos':return serializedCatalog(async()=>catalog(await collectionUrl(String(p.url??'')),'videos',Math.floor(bounded(p.page??1,1,10000))));
     case 'player.open':return openVideo(p);
+    case 'player.related':{
+      const id=targetId;
+      if(id===undefined||!await tabExists(id))throw new RemoteError('no_player','请先选择一个播放视频的标签页');
+      const result=await content(id,'player.related',{bvid:p.bvid});
+      if(id!==targetId)throw new RemoteError('target_changed','控制标签页已切换，请刷新相关视频');
+      return result;
+    }
     case 'player.manage':{managed=Boolean(p.enabled);if(currentBinding)currentBinding.managed=managed;const result=targetId&&await tabExists(targetId)?await content(targetId,'player.manage',{enabled:managed}):{};if(!managed)originalAutoplay=undefined;await remember();return result;}
     case 'player.state':return targetId&&await tabExists(targetId)?content(targetId,'player.state'):{};
     case 'player.command':{
