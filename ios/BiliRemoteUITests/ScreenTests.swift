@@ -33,9 +33,12 @@ final class ScreenTests: XCTestCase {
         scrollTo(app.staticTexts["相关视频 12 · 和朋友一起发现新的风景"], in: app)
         XCTAssertEqual(app.scrollViews.count, 1)
         capture(app, "07-related-bottom")
+        // Relaunch at the top before rotation. Querying hittability of a far-offscreen
+        // static text after rotation can itself fail in XCTest's accessibility service.
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.staticTexts["playerTitle"].waitForExistence(timeout: 10))
         XCUIDevice.shared.orientation = .landscapeLeft
         defer { XCUIDevice.shared.orientation = .portrait }
-        for _ in 0..<10 { if app.staticTexts["playerTitle"].isHittable { break }; app.swipeDown() }
         assertPlayerFits(app)
         capture(app, "08-landscape")
     }
