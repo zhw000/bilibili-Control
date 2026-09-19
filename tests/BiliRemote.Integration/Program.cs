@@ -72,6 +72,20 @@ var related = await phone.Request("player.related", new { bvid = beforeRelated.B
 Check(related.Flag("ok") && related.GetProperty("result").GetProperty("items").GetArrayLength() == 1 && browser.State == beforeRelated, "related videos roundtrip leaves playback unchanged");
 var selection = await phone.Request("queue.select", new { bvid = "BV1test" });
 Check(selection.Flag("ok") && server.Queue.Snapshot.Index == 0 && server.Queue.Snapshot.Items.Count == 3 && server.Queue.Snapshot.Source?.Kind == "creator", "inline selection preserves creator playlist");
+foreach (var method in new[] { "creator.profile", "favorites.folders", "comments.list" })
+{
+    var before = browser.State;
+    var result = await phone.Request(method, new { creatorId = "123", bvid = before.Bvid });
+    Check(result.Flag("ok") && result.GetProperty("result").Text("method") == method && browser.State == before, $"{method} roundtrip preserves playback");
+}
+await phone.Request("comments.add", new { bvid = browser.State.Bvid, message = "Fixture only" }, "comment-once");
+await phone.Request("comments.add", new { bvid = browser.State.Bvid, message = "Fixture only" }, "comment-once");
+Check(browser.CommentSubmissions == 1, "duplicate comment submission is forwarded exactly once");
+var favorites = await phone.Request("queue.start", new { kind = "favorites", folderId = "123", keyword = "test" });
+Check(favorites.Flag("ok") && server.Queue.Snapshot.Source?.FolderId == "123" && browser.LastCatalog.Text("keyword") == "test", "favorite queue preserves folder and search parameters");
+await phone.Request("queue.next", new { });
+await phone.Request("queue.next", new { });
+Check(server.Queue.Snapshot.Index == 2 && browser.LastCatalog.Number("page") == 2, "favorite queue paginates automatically");
 var seconds = args.Length == 2 && args[0] == "--soak-seconds" ? int.Parse(args[1]) : 0;
 var start = DateTimeOffset.UtcNow;
 for (var tick = 0; tick < seconds; tick++)
@@ -129,6 +143,8 @@ sealed class BrowserFixture : IDisposable
     private StreamWriter? writer;
     public PlayerState State { get; private set; } = new();
     public int RelativeCommands { get; private set; }
+    public int CommentSubmissions { get; private set; }
+    public JsonElement LastCatalog { get; private set; }
     public List<string> OpenedVideos { get; } = [];
     public async Task Connect()
     {
@@ -144,6 +160,8 @@ sealed class BrowserFixture : IDisposable
                     switch (request.Method)
                     {
                         case "creator.videos":
+                        case "favorites.videos":
+                            LastCatalog = request.Params.Clone();
                             var first = new VideoItem("BV1test", "One", "https://www.bilibili.com/video/BV1test/");
                             var second = first with { Bvid = "BV2test", Title = "Two" }; var third = first with { Bvid = "BV3test", Title = "Three" };
                             result = request.Params.Number("page") == 1 ? new PageResult<VideoItem>([first, second], 1, 2, 3, 2) : new PageResult<VideoItem>([second, third], 2, 2, 3); break;
@@ -156,6 +174,8 @@ sealed class BrowserFixture : IDisposable
                             result = State; break;
                         case "player.related":
                             result = new { bvid = State.Bvid, items = new[] { new VideoItem("BVRelated", "Related", "https://www.bilibili.com/video/BVRelated/") } }; break;
+                        case "creator.profile": case "favorites.folders": case "comments.list": result = new { method = request.Method }; break;
+                        case "comments.add": CommentSubmissions++; result = new { message = "Fixture only" }; break;
                         default: result = State; break;
                     }
                     await Send(Reply.Success(request.Id, Wire.Element(result)));

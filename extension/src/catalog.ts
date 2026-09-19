@@ -10,13 +10,22 @@ function card(a:Element):Element {
   return a.closest('.bili-video-card,.video-page-card-small')??a.closest('.bili-cover-card,.video-card,.small-item,.upload-video-card,.bili-user-profile-view,.bili-user-card,.b-user-info-card,.user-item,.user-card,.video-list-item,.list-item')??a.parentElement?.parentElement??a;
 }
 function imageOf(node:Element):string|undefined {
-  const image=node.querySelector('img');const source=image?.getAttribute('src')||image?.getAttribute('data-src');
-  if(!source||source.startsWith('data:'))return undefined;
-  return coverUrl(source);
+  for(const image of node.querySelectorAll('img,source')){
+    // Lazy images often have a nonempty data: placeholder in src, while picture
+    // keeps the real cover in source/srcset before the browser decodes it.
+    for(const attribute of ['data-src','data-original','data-lazy-src','src','data-srcset','srcset']){
+      const value=image.getAttribute(attribute);if(!value||value.startsWith('data:'))continue;
+      const cover=coverUrl(attribute.includes('srcset')?value.split(',')[0].trim().split(/\s+/)[0]:value);
+      if(cover)return cover;
+    }
+  }
+  return undefined;
 }
 export function coverUrl(source:string|null|undefined):string|undefined {
   if(!source)return undefined;
-  try{const url=new URL(source,location.href);if(url.protocol!=='https:')return undefined;
+  try{const url=new URL(source,'https://www.bilibili.com/');
+    if(url.protocol==='http:'&&url.hostname.endsWith('.hdslb.com'))url.protocol='https:';
+    if(url.protocol!=='https:')return undefined;
     // Use the original cover rather than a browser-specific AVIF resize variant.
     if(url.hostname.endsWith('.hdslb.com'))url.pathname=url.pathname.split('@')[0];
     return url.href;
@@ -33,7 +42,9 @@ export function videoItems(root:ParentNode=document):VideoItem[] {
     const owner=row.querySelector<HTMLAnchorElement>('a[href*="space.bilibili.com/"]');
     const durationLabel=[...row.querySelectorAll('.bili-video-card__stats__duration,.bili-cover-card__stat span,.duration')].map(txt).find(s=>/^\d{1,3}:\d{2}(?::\d{2})?$/.test(s));
     const result:VideoItem={bvid,title,url:`https://www.bilibili.com/video/${bvid}/`,cover:imageOf(row),duration:durationSeconds(durationLabel??txt(row)),creatorId:owner?.href.match(/space\.bilibili\.com\/(\d+)/)?.[1],creatorName:txt(owner).replace(/\s*[·•]\s*.*$/,'')};
-    const old=found.get(bvid);if(!old||result.title.length>old.title.length)found.set(bvid,{...old,...result});
+    const old=found.get(bvid);
+    if(!old)found.set(bvid,result);
+    else found.set(bvid,{...old,...(result.title.length>old.title.length?result:{}),cover:old.cover??result.cover,duration:old.duration??result.duration,creatorId:old.creatorId||result.creatorId,creatorName:old.creatorName||result.creatorName});
   }
   return [...found.values()];
 }
@@ -93,10 +104,13 @@ export function pageError():RemoteError|undefined {
 }
 function emptyVisible():boolean {return /没有相关|没有找到|还没有|还没建过|什么也没有|暂无视频|暂无内容|空空如也/.test([...document.querySelectorAll('[class*="empty"],[class*="no-data"],[class*="nodata"]')].map(txt).join(' '))}
 export async function readCatalog(kind:string):Promise<PageResult<VideoItem|CreatorItem|CollectionItem>>{
+  let firstItemsAt:number|undefined;
   for(let attempt=0;attempt<80;attempt++){
     const error=pageError();if(error)throw error;
     const items=kind==='creators'?creatorItems():kind==='collections'?collectionItems():videoItems();
-    if(items.length||emptyVisible()){const {totalPages,total}=pagination();return {items,page:1,totalPages,total,nextPage:totalPages>1?2:undefined}}
+    if(items.length&&firstItemsAt===undefined)firstItemsAt=attempt;
+    const coversReady=items.every(item=>'avatar' in item?!!item.avatar:'cover' in item&&!!item.cover);
+    if((items.length&&(coversReady||attempt-(firstItemsAt??attempt)>=6||attempt===79))||emptyVisible()){const {totalPages,total}=pagination();return {items,page:1,totalPages,total,nextPage:totalPages>1?2:undefined}}
     await new Promise(resolve=>setTimeout(resolve,250));
   }
   throw new RemoteError('page_changed','未能读取目录；请检查电脑网页是否加载完成，或更新扩展以适配新版页面');

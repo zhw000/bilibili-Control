@@ -103,7 +103,7 @@ enum DeviceKeychain {
     private var timeouts: [String: Task<Void, Never>] = [:]
     private var generation = UUID()
     private var retryAttempt = 0
-    private var status: Status = .disconnected { didSet { onStatus?(status) } }
+    private(set) var status: Status = .disconnected { didSet { onStatus?(status) } }
     func pair(_ descriptor: PairingDescriptor, name: String) async throws -> DeviceConfig {
         let delegate = PinnedSessionDelegate(host: descriptor.host, fingerprint: descriptor.certificateSha256)
         let temporary = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
@@ -166,7 +166,7 @@ enum DeviceKeychain {
             else { continuation.resume(throwing: envelope.error ?? RemoteFailure(code: "request_failed", message: "操作未完成。")) }
         }
     }
-    func request<T: Decodable>(_ method: String, params: [String: JSONValue] = [:], as type: T.Type = T.self) async throws -> T {
+    func request<T: Decodable>(_ method: String, params: [String: JSONValue] = [:], timeout: Double = 85, as type: T.Type = T.self) async throws -> T {
         guard status == .connected, let socket else { throw RemoteFailure.disconnected }
         let id = UUID().uuidString
         let payload: JSONValue = .object(["v": .number(1), "id": .string(id), "method": .string(method), "params": .object(params)])
@@ -174,7 +174,7 @@ enum DeviceKeychain {
         let value: JSONValue = try await withCheckedThrowingContinuation { continuation in
             pending[id] = continuation
             timeouts[id] = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(85))
+                try? await Task.sleep(for: .seconds(timeout))
                 guard !Task.isCancelled, let self else { return }
                 self.pending.removeValue(forKey: id)?.resume(throwing: RemoteFailure(code: "timeout", message: "电脑响应超时，请检查电脑网页。")); self.timeouts.removeValue(forKey: id)
             }

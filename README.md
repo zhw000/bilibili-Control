@@ -2,7 +2,7 @@
 
 原生 iOS 遥控器，用手机搜索和选片，让 Windows Chrome 中的哔哩哔哩网页播放。
 
-支持 iOS 17+、Windows 10/11 x64 和当前稳定版 Chrome。手机与电脑需在同一局域网；电脑可以连接网线。
+支持 iOS 17+、可选的 watchOS 10+ 配套 App、Windows 10/11 x64 和当前稳定版 Chrome。手机与电脑需在同一局域网；电脑可以连接网线。
 
 ## 安装
 
@@ -15,7 +15,11 @@
 
 ## 使用
 
-- 在“发现”搜索视频或 UP 主；进入 UP 主可查看全部投稿、合集和系列。
+- 在“发现”搜索视频或 UP 主；主页包含简介、认证、粉丝、关注、投稿和获赞，支持投稿内搜索、最新 / 最早 / 最多播放排序、合集和系列。
+- “收藏”显示电脑 Chrome 当前登录账号的收藏夹，可搜索收藏夹、点播或播放整个收藏夹；连播会自动加载后续页面。暂只显示视频类收藏，失效视频会标记。
+- 在播放页打开“查看评论 / 发表评论”，支持热门 / 最新排序、翻页、展开楼中楼及回复。点击发送后使用电脑账号发表；发送失败保留草稿，结果不明确时应先刷新核对。
+- Siri 可说“用哔哩遥控暂停播放”“用哔哩遥控播放下一个视频”，也支持继续播放、上一条、前后十秒和音量；可以在快捷指令 App 中选择这些操作。首次使用先在手机完成配对和局域网授权。
+- Apple Watch 配套 App 提供播放状态、暂停 / 继续、前后十秒、上一条 / 下一条和音量。它通过 iPhone 连接电脑，断连指令不会排队补发；手机 App 不能被强制退出，且需能访问电脑所在的局域网。
 - “全部播放”在电脑维护队列，手机锁屏或离开 App 后，电脑仍可继续播放。
 - “播放”页支持暂停、上一项/下一项、前后 10 秒、拖动进度、输入准确时间、0.5～2 倍速、弹幕与全屏。
 - 播放列表位于播放控制下方，整页向下滚动可见；合集/全部投稿显示队列，单独视频显示相关推荐。0.2.0 不再提供独立的队列标签页。[升级说明](docs/RELEASE-0.2.0.md)。
@@ -33,7 +37,7 @@
 ./scripts/build-windows.ps1
 ```
 
-生成 `.exe` 安装程序需要 Inno Setup 6；缺少时仍会生成完整便携安装 ZIP。项目不依赖本机手动设置的全局 Node/.NET 开发服务。
+生成 `.exe` 安装程序需要 Inno Setup 6；缺少时仍会生成完整便携安装 ZIP。项目不依赖本机手动设置的全局 Node/.NET 开发服务。若系统只有旧版 .NET SDK，可使用 `./scripts/build-windows.ps1 -Dotnet ./.tools/dotnet/dotnet.exe`（需要该目录已有 .NET 10 SDK）。
 
 ```sh
 # Mac：生成工程，在 Xcode 中运行或按 workflow 构建
@@ -43,6 +47,10 @@ open BiliRemote.xcodeproj
 ```
 
 GitHub Actions 工作流分别构建 Windows/Chrome 和 iOS。下载 `BiliRemote-iOS-unsigned` 和 `BiliRemote-Windows-Installer` 即可；安装程序内含扩展。`BiliRemote-Chrome` 提供独立扩展，`BiliRemote-Windows-Portable` 是可选便携包。无需向 GitHub 上传签名证书。`scripts/verify-ipa.py` 会检查 IPA 的真机平台、arm64 可执行文件和权限说明。
+
+更新这批功能需要同时更新电脑助手、Chrome 扩展与 iPhone App。扩展新增哔哩哔哩 API 域名访问及 cookies 权限，用于读取收藏和在浏览器内取得评论 CSRF 值；不会把浏览器 Cookie 传给手机或电脑助手。更新后在 `chrome://extensions` 重新加载扩展并检查权限提示。
+
+Apple Watch App 会嵌入 iPhone IPA；重签名时必须同时签名 Watch 子应用，并保持 `WKCompanionAppBundleIdentifier` 与实际 iPhone Bundle ID 一致。在 iPhone 的 Watch App 中安装配套应用。构建及真机验收状态见[新增功能验证记录](docs/COMMUNITY-AND-WATCH.md)。
 
 ## 排查
 

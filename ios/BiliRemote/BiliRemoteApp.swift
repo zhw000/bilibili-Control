@@ -1,6 +1,8 @@
 import SwiftUI
+import AppIntents
 
 @main struct BiliRemoteApp: App {
+    init() { PlaybackShortcuts.updateAppShortcutParameters() }
     @StateObject private var model = RemoteModel()
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
@@ -20,6 +22,7 @@ struct RootView: View {
         TabView(selection: $model.selectedTab) {
             NavigationStack { SearchView().safeAreaInset(edge: .bottom) { MiniPlayer() } }.tabItem { Label("发现", systemImage: "magnifyingglass") }.tag(0)
             NavigationStack { PlayerView() }.tabItem { Label("播放", systemImage: "play.circle") }.tag(1)
+            NavigationStack { FavoritesView().safeAreaInset(edge: .bottom) { MiniPlayer() } }.tabItem { Label("收藏", systemImage: "star") }.tag(2)
             NavigationStack { DevicesView() }.tabItem { Label("设备", systemImage: "desktopcomputer") }.tag(3)
         }
     }
@@ -39,8 +42,7 @@ struct CoverView: View {
             }.clipped()
     }
     private var remoteImage: some View {
-        AsyncImage(url: url.flatMap(URL.init(string:))) { image in image.resizable().scaledToFill() }
-        placeholder: { Image(systemName: "play.rectangle.fill").font(.title2).foregroundStyle(Color.biliPink.opacity(0.5)) }
+        RemoteCoverImage(source: url)
     }
     #if DEBUG
     private static let previewImage = UIGraphicsImageRenderer(size: CGSize(width: 1600, height: 900)).image { context in
@@ -76,7 +78,7 @@ struct VideoRow: View {
                         .overlay(alignment: .bottomTrailing) { if let duration = video.duration { Text(Timecode.format(duration)).font(.caption2.monospacedDigit()).padding(4).background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 4)).foregroundStyle(.white).padding(5) } }
                     VStack(alignment: .leading, spacing: 6) { Text(video.title).font(.subheadline.weight(.medium)).lineLimit(3); if let reason = video.unavailableReason { Text(reason).font(.caption).foregroundStyle(.secondary) } }.frame(maxWidth: .infinity, alignment: .leading)
                 }.foregroundStyle(.primary)
-            }.buttonStyle(.plain)
+            }.buttonStyle(.plain).disabled(!model.ready || video.unavailableReason != nil)
             if let id = video.creatorId, let name = video.creatorName, !name.isEmpty {
                 NavigationLink { CreatorView(creator: CreatorItem(id: id, name: name, url: "https://space.bilibili.com/\(id)")) } label: { Label(name, systemImage: "person.crop.circle").font(.caption).foregroundStyle(.secondary) }.buttonStyle(.plain)
             }

@@ -1,4 +1,4 @@
-export interface VideoItem { bvid:string; title:string; url:string; cover?:string; duration?:number; creatorId?:string; creatorName?:string }
+export interface VideoItem { bvid:string; title:string; url:string; cover?:string; duration?:number; creatorId?:string; creatorName?:string; unavailableReason?:string }
 export interface CreatorItem { id:string; name:string; url:string; avatar?:string; description?:string }
 export interface CollectionItem { id:string; title:string; url:string; cover?:string; count?:number }
 export interface PageResult<T> { items:T[]; page:number; totalPages:number; total?:number; nextPage?:number }

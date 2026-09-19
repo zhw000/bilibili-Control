@@ -34,6 +34,9 @@ struct PlayerView: View {
                         progress
                         playbackControls
                         options
+                        NavigationLink(value: VideoCommentsRoute(bvid: player.bvid)) {
+                            Label("查看评论 / 发表评论", systemImage: "bubble.left.and.bubble.right").font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
+                        }.buttonStyle(.bordered).disabled(!model.ready)
                         volume
                         PlaybackListSection()
                     }
@@ -44,6 +47,7 @@ struct PlayerView: View {
             }.accessibilityIdentifier("playerScroll")
         }
         .background(Color(.systemGroupedBackground)).navigationTitle("正在播放").navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: VideoCommentsRoute.self) { route in CommentsView(bvid: route.bvid) }
         .task(id: model.relatedRequestKey) { await model.loadRelated() }
         .onChange(of: player.currentTime, initial: true) { _, value in if !seeking { seekValue = max(0, min(value, max(player.duration, 1))) } }
         .onChange(of: player.bvid) { _, _ in seeking = false; seekValue = max(0, min(player.currentTime, max(player.duration, 1))) }
@@ -148,7 +152,7 @@ struct PlaybackListSection: View {
         VStack(alignment: .leading, spacing: 14) {
             if model.showsPlaylist {
                 HStack {
-                    Text(queue.source?.kind == "creator" ? "全部投稿" : queue.source?.kind == "collection" ? "合集 / 系列" : "播放队列").font(.title3.bold())
+                    Text(queue.source?.kind == "creator" ? "UP 主投稿" : queue.source?.kind == "collection" ? "合集 / 系列" : queue.source?.kind == "favorites" ? "收藏夹" : "播放队列").font(.title3.bold())
                     Spacer()
                     Text("\(queue.index + 1) / \(queue.items.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
@@ -164,6 +168,7 @@ struct PlaybackListSection: View {
                         Button { model.execute("queue.select", ["bvid": .string(item.bvid)]) } label: {
                             HStack(alignment: .top, spacing: 10) {
                                 Text(String(index + 1)).font(.caption.monospacedDigit()).frame(width: 20)
+                                CoverView(url: item.cover ?? (item.bvid == model.snapshot.player.bvid ? model.snapshot.player.cover : nil)).frame(width: 88, height: 50).clipShape(RoundedRectangle(cornerRadius: 8))
                                 VStack(alignment: .leading, spacing: 5) {
                                     Text(item.title).font(.subheadline.weight(index == queue.index ? .semibold : .regular)).lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
                                     if let reason = item.unavailableReason { Text(reason).font(.caption).foregroundStyle(.secondary) }

@@ -41,7 +41,15 @@ public sealed class PlaybackQueue
             active = false; await manage(false);
             source = newSource; items.Clear(); index = -1; nextPage = null; playbackId = null; message = null;
             if (newSource.Kind == "manual") Append(newSource.Items ?? []);
-            else { var page = await load(newSource, 1); Append(page.Items); nextPage = page.NextPage; }
+            else {
+                var pageNumber = 1;
+                do {
+                    var page = await load(newSource, pageNumber); Append(page.Items);
+                    nextPage = page.NextPage is int following && following > pageNumber ? following : null;
+                    if (items.Count > 0 || nextPage == null) break;
+                    pageNumber = nextPage.Value;
+                } while (true);
+            }
             if (items.Count == 0) throw new RemoteException("empty_queue", "这个列表还没有可播放的视频");
             index = 0; await StartCurrent();
         }

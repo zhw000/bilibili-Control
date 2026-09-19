@@ -50,29 +50,61 @@ struct CreatorView: View {
     @State private var loading = false
     @State private var failure: String?
     @State private var generation = UUID()
+    @State private var profile: CreatorProfile?
+    @State private var profileError: String?
+    @State private var query = ""
+    @State private var keyword = ""
     var body: some View {
         List {
-            HStack(spacing: 16) { CoverView(url: creator.avatar).frame(width: 64, height: 64).clipShape(Circle()); VStack(alignment: .leading, spacing: 5) { Text(creator.name).font(.title2.bold()); Text("UP 主 · \(creator.id)").font(.caption).foregroundStyle(.secondary) } }.padding(.vertical, 8).listRowSeparator(.hidden)
+            ConnectionNotice()
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 16) { CoverView(url: profile?.avatar ?? creator.avatar).frame(width: 64, height: 64).clipShape(Circle()); VStack(alignment: .leading, spacing: 5) { Text(profile?.name ?? creator.name).font(.title2.bold()); Text("UP 主 · \(creator.id)").font(.caption).foregroundStyle(.secondary) } }
+                if let description = profile?.description ?? creator.description, !description.isEmpty { Text(description).font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled) }
+                if let profile {
+                    if !profile.verified.isEmpty { Label(profile.verified, systemImage: "checkmark.seal.fill").font(.caption).foregroundStyle(Color.biliPink) }
+                    HStack(spacing: 18) {
+                        stat("粉丝", profile.followers); stat("关注", profile.following); stat("投稿", profile.videoCount); stat("获赞", profile.likes)
+                    }
+                    Text("等级 Lv.\(profile.level)").font(.caption2).foregroundStyle(.secondary)
+                }
+                if let profileError { Text(profileError).font(.caption).foregroundStyle(.secondary); Button("重试主页资料") { Task { await loadProfile() } }.font(.caption).disabled(!model.ready) }
+                if let url = URL(string: "https://space.bilibili.com/\(creator.id)") { ShareLink(item: url) { Label("分享主页", systemImage: "square.and.arrow.up").font(.caption) } }
+            }.padding(.vertical, 8).listRowSeparator(.hidden)
             Picker("内容类型", selection: $category) { Text("全部投稿").tag("videos"); Text("合集和系列").tag("collections") }.pickerStyle(.segmented)
             if category == "videos" {
-                HStack { Picker("顺序", selection: $order) { Text("最新优先").tag("newest"); Text("最早优先").tag("oldest") }; Spacer(); Button { model.startQueue(QueueSource(kind: "creator", creatorId: creator.id, order: order)) } label: { Label("全部播放", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(!model.ready) }
+                HStack { Picker("顺序", selection: $order) { Text("最新优先").tag("newest"); Text("最早优先").tag("oldest"); Text("最多播放").tag("popular") }; Spacer(); Button { model.startQueue(QueueSource(kind: "creator", creatorId: creator.id, order: order, keyword: keyword)) } label: { Label(keyword.isEmpty ? "全部播放" : "播放结果", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(!model.ready || videos.isEmpty || loading) }
                 ForEach(videos) { VideoRow(video: $0) }
             } else {
                 ForEach(collections) { collection in NavigationLink { CollectionView(collection: collection) } label: { HStack { CoverView(url: collection.cover).frame(width: 110, height: 70).clipShape(RoundedRectangle(cornerRadius: 10)); VStack(alignment: .leading, spacing: 5) { Text(collection.title).font(.headline); if let count = collection.count { Text("\(count) 个视频").font(.caption).foregroundStyle(.secondary) } } }.padding(.vertical, 5) } }
             }
             if let failure { Text(failure).foregroundStyle(.secondary); Button("重新加载") { Task { await load(reset: true) } } }
             if loading { ProgressView("读取主页…").frame(maxWidth: .infinity) }
-            if !loading && failure == nil && (category == "videos" ? videos.isEmpty : collections.isEmpty) { ContentUnavailableView("这里还没有内容", systemImage: "tray") }
+            if model.ready && !loading && failure == nil && (category == "videos" ? videos.isEmpty : collections.isEmpty) { ContentUnavailableView("这里还没有内容", systemImage: "tray") }
             if nextPage != nil && !loading { Button("加载更多") { Task { await load(reset: false) } } }
         }.listStyle(.plain).navigationTitle("UP 主主页").navigationBarTitleDisplayMode(.inline)
-            .task(id: category + order) { await load(reset: true) }
+            .searchable(text: $query, prompt: "搜索这位 UP 主的投稿")
+            .onSubmit(of: .search) { category = "videos"; keyword = query.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .onChange(of: query) { _, value in if value.isEmpty { keyword = "" } }
+            .task(id: "\(model.ready)-\(category)-\(order)-\(keyword)") { await load(reset: true) }
+            .task(id: model.ready) { await loadProfile() }
+            .refreshable { await loadProfile(); await load(reset: true) }
+    }
+    private func stat(_ title: String, _ count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) { Text(count.formatted(.number.notation(.compactName))).font(.subheadline.bold()); Text(title).font(.caption).foregroundStyle(.secondary) }
+    }
+    private func loadProfile() async {
+        guard model.ready else { return }
+        do { let result: CreatorProfile = try await model.transport.request("creator.profile", params: ["creatorId": .string(creator.id)]); guard !Task.isCancelled else { return }; profile = result; profileError = nil }
+        catch { if !Task.isCancelled { profileError = error.localizedDescription } }
     }
     private func load(reset: Bool) async {
+        if loading && !reset { return }
         let ticket = UUID(); generation = ticket; loading = true; failure = nil
+        guard model.ready else { loading = false; return }
         let mode = category, page = reset ? 1 : nextPage ?? 1
         if reset { videos = []; collections = []; nextPage = nil }
         do {
-            let params: [String: JSONValue] = ["creatorId": .string(creator.id), "order": .string(order), "page": .number(Double(page))]
+            let params: [String: JSONValue] = ["creatorId": .string(creator.id), "order": .string(order), "keyword": .string(keyword), "page": .number(Double(page))]
             if mode == "videos" { let result: PageResult<VideoItem> = try await model.transport.request("creator.videos", params: params); guard ticket == generation else { return }; videos.append(contentsOf: result.items.filter { item in !videos.contains(where: { $0.id == item.id }) }); nextPage = result.nextPage }
             else { let result: PageResult<CollectionItem> = try await model.transport.request("creator.collections", params: params); guard ticket == generation else { return }; collections.append(contentsOf: result.items.filter { item in !collections.contains(where: { $0.id == item.id }) }); nextPage = result.nextPage }
         } catch { if ticket == generation { failure = error.localizedDescription } }

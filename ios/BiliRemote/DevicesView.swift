@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import AppIntents
 
 struct DevicesView: View {
     @EnvironmentObject private var model: RemoteModel
@@ -7,11 +8,12 @@ struct DevicesView: View {
     @State private var scanner = false
     @State private var tabs: [BrowserTab] = []
     @State private var loadingTabs = false
+    @ObservedObject private var watch = PhoneWatchBridge.shared
     var body: some View {
         Form {
             Section {
                 HStack(spacing: 16) { Image(systemName: "desktopcomputer").font(.largeTitle).foregroundStyle(Color.biliPink); VStack(alignment: .leading, spacing: 5) { Text(model.device?.computerName ?? "连接你的电脑").font(.headline); Text(model.status == .connected ? "局域网已连接" : model.status == .connecting ? "正在连接…" : "尚未连接").font(.subheadline).foregroundStyle(.secondary) }; Spacer(); if model.status == .connecting { ProgressView() } }
-                if let device = model.device { Text("\(device.host):\(device.port)").font(.caption.monospaced()).foregroundStyle(.secondary); Button("重新连接") { model.connect() }; Button("忘记这台电脑", role: .destructive) { model.forget() } }
+                if let device = model.device { Text("\(device.host):\(device.port)").font(.caption.monospaced()).foregroundStyle(.secondary); Button("重新连接") { model.background(); model.connect() }; Button("忘记这台电脑", role: .destructive) { model.forget() } }
                 if let hint = model.connectionHint { Text(hint).font(.footnote).foregroundStyle(.secondary) }
             }
             Section("配对电脑") {
@@ -27,6 +29,15 @@ struct DevicesView: View {
                     Button { Task { await refreshTabs() } } label: { HStack { Text("刷新标签页"); if loadingTabs { Spacer(); ProgressView() } } }.disabled(!model.snapshot.browserConnected || loadingTabs)
                     Text("选定后固定控制此标签页；没有合适的标签页时，点播视频会自动创建。").font(.caption).foregroundStyle(.secondary)
                 }
+            }
+            Section("Siri 与快捷指令") {
+                SiriTipView(intent: PlaybackIntent(action: .play))
+                Text("试着说：嘿 Siri，用哔哩遥控暂停播放。也支持继续播放、上一条、下一条、前后十秒和音量。").font(.footnote).foregroundStyle(.secondary)
+                Text("先完成电脑配对并允许局域网访问，再在快捷指令 App 中查看哔哩遥控的操作。").font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Apple Watch") {
+                Label(watch.status, systemImage: "applewatch")
+                Text("在 iPhone 的 Watch App 中安装哔哩遥控，即可在手表查看播放状态、播放或暂停、切换视频、前后十秒和调节音量。需要 iPhone 能连接同一局域网内的电脑。").font(.footnote).foregroundStyle(.secondary)
             }
             Section { Text("Bili Remote \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") · 自用版").font(.footnote).foregroundStyle(.secondary) }
         }.navigationTitle("设备")

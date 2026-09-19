@@ -28,15 +28,20 @@ The host sends a complete snapshot immediately after connecting and when state c
 |---|---|---|
 | `snapshot` | `{}` | Full state |
 | `search` | `query`, `kind: videos / creators`, `page` | Paged videos or creators |
-| `creator.videos` | `creatorId`, `order: newest / oldest`, `page` | Paged videos |
+| `creator.videos` | `creatorId`, `order: newest / oldest / popular`, optional `keyword`, `page` | Paged videos |
+| `creator.profile` | `creatorId` | Creator identity, description, verified label, followers, following, videoCount, likes, level |
 | `creator.collections` | `creatorId`, `page` | Paged collections |
 | `collection.videos` | `url`, `page` | Paged videos |
+| `favorites.folders` | `{}` | `{accountName,items:[{id,title,count}]}` for Chrome's logged-in account |
+| `favorites.videos` | `folderId`, optional `keyword`, `page` | Paged video favorites; unavailable items have `unavailableReason` |
+| `comments.list` | `bvid`, `order: hot / newest`, `page`, optional `root` | `{bvid,items,total,page,totalPages,nextPage?}`; string comment IDs, plain message, author, timestamp, likes and reply previews |
+| `comments.add` | `bvid`, `message` (1–1000 Unicode code points), optional `root,parent` | `{bvid,message,comment?}`; explicit user submission only; does not change playback |
 | `tabs.list` | `{}` | `{id,title,url,selected}[]` |
 | `tabs.select` | `tabId` | Player state; stops previous queue |
 | `player.open` | `video` | Replaces queue with this video |
 | `player.related` | `bvid` | `{bvid,items: VideoItem[]}` from the selected playback tab's recommendations; never navigates or changes playback |
 | `player.command` | `action`, optional `value` | Player state |
-| `queue.start` | `kind: manual / creator / collection`, optional `items / creatorId / url`, `order` | Queue snapshot |
+| `queue.start` | `kind: manual / creator / collection / favorites`, optional `items / creatorId / url / folderId / keyword`, `order` | Queue snapshot |
 | `queue.previous / queue.next / queue.resume / queue.stop` | `{}` | Queue snapshot |
 | `queue.select` | `bvid` | Starts an already-loaded queue item, preserving source and pending pages; stale BVID returns `queue_changed` |
 | `system.volume` | `value: 0...1` | System volume |
@@ -52,6 +57,16 @@ The iOS playback page contains one vertical scroll view. Creator/collection or m
 
 ## Browser adaptation
 
-Directory reads run serially in one inactive, muted catalog tab, separate from the fixed playback target. The adapter reads rendered page elements and pagination. Browser cookies are not exported. Adapter failures are surfaced explicitly; they are not silently converted into empty successful results. Tests use DOM fixtures; live website compatibility must be checked separately.
+Search, creator videos and collections run serially in one inactive, muted catalog tab, separate from the fixed playback target. Those adapters read rendered page elements and pagination. Creator profiles, favorites and comments use fixed `api.bilibili.com` endpoints from the extension service worker with Chrome's session. The extension only reads the `bili_jct` cookie locally for a comment POST; browser cookies and CSRF values are never exported. No caller-controlled API URLs are accepted. Adapter failures are surfaced explicitly; they are not silently converted into empty successful results. Tests use DOM and API fixtures; logged-in website compatibility must be checked separately.
+
+Comment POSTs are never automatically retried. The existing request ledger also deduplicates `comments.add` within its retention window. A lost POST response returns `comment_uncertain`; transport loss after submission is also displayed as an unconfirmed result. Clients retain the draft and instruct the user to read comments before resubmitting. Hot comments deduplicate pinned entries, replies paginate by string root ID, and reads remain bound to the requested BVID even if the player changes.
+
+Cover extraction prefers lazy data attributes and picture sources over placeholders, strips CDN resize suffixes, preserves known covers during deduplication, and gives initial DOM hydration a bounded wait. Related-video reads supplement missing covers from the first-party related API and revalidate the playback target. iOS retries missing related metadata twice and failed image downloads twice, with a Bilibili Referer, normalized HTTPS URLs and an in-memory thumbnail cache.
+
+## Siri and Apple Watch
+
+The iOS App Intent exposes play, pause, previous/next, ±10 seconds and ±10% player volume. Each invocation opens its own certificate-pinned, short-lived connection using the existing Keychain pairing, checks a fresh snapshot, and sends its command once. It never starts the UI socket or queues offline actions.
+
+The watchOS 10 companion receives only a compact `WatchPlaybackState` via WatchConnectivity application context. Foreground watch refreshes and button presses use interactive messages `{id: UUID, action: RemoteAction}` with replies containing encoded state or an error. iPhone reconnects to the computer on demand; duplicate message IDs share their original result (up to 32 completed messages), and IDs reused for a different action fail. Only the fixed action enum is accepted. Credentials and certificate material never leave iPhone. Reachability, last synchronization time, timeouts and errors appear on the watch. The companion depends on iPhone connectivity and is not a standalone LAN client.
 
 An end-event capture listener prevents the site's own end listeners from racing the host queue. When a recognizable autoplay checkbox is present, its prior value is restored on release. The extension handles intermediate parts; the host handles the final part. Manual navigation to another video ends queue ownership. Restarting the host restores metadata and progress but does not start playback.

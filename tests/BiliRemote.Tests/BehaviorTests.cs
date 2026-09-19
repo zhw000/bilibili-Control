@@ -4,6 +4,20 @@ using Xunit;
 namespace BiliRemote.Tests;
 public sealed class BehaviorTests
 {
+    [Fact] public async Task FavoriteQueueSkipsNonVideoPagesAndPreservesSourceOnRestore()
+    {
+        var pages = new List<int>(); var plays = new List<string>();
+        var queue = new PlaybackQueue((source, page) => {
+            Assert.Equal("favorites", source.Kind); Assert.Equal("123", source.FolderId); Assert.Equal("keyword", source.Keyword);
+            pages.Add(page);
+            return Task.FromResult(page == 1 ? new PageResult<VideoItem>([], 1, 2, 21, 2) : new PageResult<VideoItem>([new("BV1", "One", "https://www.bilibili.com/video/BV1/")], 2, 2, 21));
+        }, (video, _, _, _) => { plays.Add(video.Bvid); return Task.CompletedTask; }, _ => Task.CompletedTask);
+        await queue.Start(new("favorites", FolderId: "123", Keyword: "keyword"));
+        Assert.Equal(new[] { 1, 2 }, pages); Assert.Equal(new[] { "BV1" }, plays);
+        var restored = new PlaybackQueue((_, _) => throw new Exception("Must not fetch on restore"), (_, _, _, _) => throw new Exception("Must not autoplay"), _ => Task.CompletedTask);
+        restored.Restore(queue.Snapshot, new(CurrentTime: 42));
+        Assert.Equal("123", restored.Snapshot.Source?.FolderId); Assert.True(restored.Snapshot.CanResume);
+    }
     [Theory][InlineData("01:30",90)][InlineData("1:02:03",3723)][InlineData("120:00",7200)]
     public void ParsesTime(string value, double expected) => Assert.Equal(expected, Validation.ParseTime(value));
     [Theory][InlineData("1:60")][InlineData("-1:00")][InlineData("1:99:00")][InlineData("12")]

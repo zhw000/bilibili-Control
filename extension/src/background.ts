@@ -1,4 +1,5 @@
 import {bounded,numericId,PageResult,RemoteError,Request,urlAllowed} from './types';
+import {community,relatedCovers} from './community';
 
 const HOST='com.biliremote.bridge';
 let port:chrome.runtime.Port|undefined,targetId:number|undefined,catalogId:number|undefined,managed=false;
@@ -74,7 +75,12 @@ async function handle(req:Request):Promise<unknown>{
     case 'tabs.list':return (await chrome.tabs.query({url:['https://www.bilibili.com/*']})).filter(t=>t.id!==catalogId).map(t=>({id:t.id,title:t.title??'哔哩哔哩',url:t.url,selected:t.id===targetId}));
     case 'tabs.select':{const id=bounded(p.tabId,0,Number.MAX_SAFE_INTEGER);if(!await tabExists(id)||id===catalogId)throw new RemoteError('invalid_tab','这个标签页已经关闭或不属于哔哩哔哩');if(targetId&&await tabExists(targetId))await content(targetId,'player.manage',{enabled:false});targetId=id;currentBinding=undefined;managed=false;await remember();return content(id,'player.state')}
     case 'search':{const query=String(p.query??'').trim();if(!query||query.length>200)throw new RemoteError('invalid_request','搜索词必须为 1～200 字');const kind=p.kind==='creators'?'creators':'videos';const url=`https://search.bilibili.com/${kind==='creators'?'upuser':'video'}?keyword=${encodeURIComponent(query)}`;return serializedCatalog(()=>catalog(url,kind,Math.floor(bounded(p.page??1,1,10000))))}
-    case 'creator.videos':return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/upload/video`,'videos',Math.floor(bounded(p.page??1,1,10000)),p.order==='oldest'?'oldest':'newest'));
+    case 'creator.videos':{
+      const keyword=String(p.keyword??'').trim();if(keyword.length>100)throw new RemoteError('invalid_request','搜索词不能超过 100 字');
+      const query=new URLSearchParams({order:p.order==='popular'?'click':'pubdate',keyword});
+      return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/upload/video?${query}`,'videos',Math.floor(bounded(p.page??1,1,10000)),p.order==='oldest'?'oldest':'newest'));
+    }
+    case 'creator.profile':case 'favorites.folders':case 'favorites.videos':case 'comments.list':case 'comments.add':return community(req.method,p);
     case 'creator.collections':return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/lists`,'collections',Math.floor(bounded(p.page??1,1,10000))));
     case 'collection.videos':return serializedCatalog(async()=>catalog(await collectionUrl(String(p.url??'')),'videos',Math.floor(bounded(p.page??1,1,10000))));
     case 'player.open':return openVideo(p);
@@ -82,7 +88,11 @@ async function handle(req:Request):Promise<unknown>{
       const id=targetId;
       if(id===undefined||!await tabExists(id))throw new RemoteError('no_player','请先选择一个播放视频的标签页');
       const result=await content(id,'player.related',{bvid:p.bvid});
+      if(result.items.some((item:{cover?:string})=>!item.cover)){
+        try{const covers=new Map((await relatedCovers(String(p.bvid))).map(item=>[item.bvid,item.cover]));result.items=result.items.map((item:{bvid:string;cover?:string})=>({...item,cover:item.cover??covers.get(item.bvid)}));}catch{/* Keep usable DOM results if the site API is unavailable. */}
+      }
       if(id!==targetId)throw new RemoteError('target_changed','控制标签页已切换，请刷新相关视频');
+      if((await content(id,'player.state')).bvid!==p.bvid)throw new RemoteError('target_changed','电脑已切换视频，请刷新相关视频');
       return result;
     }
     case 'player.manage':{managed=Boolean(p.enabled);if(currentBinding)currentBinding.managed=managed;const result=targetId&&await tabExists(targetId)?await content(targetId,'player.manage',{enabled:managed}):{};if(!managed)originalAutoplay=undefined;await remember();return result;}

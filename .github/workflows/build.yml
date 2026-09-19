@@ -26,7 +26,7 @@ jobs:
         run: ./scripts/build-windows.ps1
       - name: Require installer
         shell: pwsh
-        run: if (-not (Test-Path artifacts/BiliRemote-Setup-0.2.0.exe)) { throw 'Windows installer missing' }
+        run: if (-not (Test-Path artifacts/BiliRemote-Setup-0.3.0.exe)) { throw 'Windows installer missing' }
       - uses: actions/upload-artifact@v4
         with:
           name: BiliRemote-Windows-Installer
@@ -71,6 +71,8 @@ jobs:
           trap 'kill "$FIXTURE_PID"' EXIT
           DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for v in d["devices"].values() for x in v if x["name"].startswith("iPhone")))')
           xcodebuild test -project ios/BiliRemote.xcodeproj -scheme BiliRemote -destination "platform=iOS Simulator,id=$DEVICE_ID" -resultBundlePath artifacts/iOS-tests.xcresult CODE_SIGNING_ALLOWED=NO
+      - name: Build Apple Watch companion for simulator
+        run: xcodebuild -project ios/BiliRemote.xcodeproj -target BiliRemoteWatch -configuration Debug -sdk watchsimulator CODE_SIGNING_ALLOWED=NO
       - name: Check compact iPhone layout
         run: |
           SMALL_TYPE=$(xcrun simctl list devicetypes --json | python3 -c 'import json,sys; print(next(x["identifier"] for x in json.load(sys.stdin)["devicetypes"] if x["name"] == "iPhone SE (3rd generation)"))')

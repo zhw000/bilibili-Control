@@ -26,7 +26,7 @@ struct CollectionItem: Codable, Identifiable, Hashable {
     var count: Int?
 }
 struct PageResult<T: Codable>: Codable { let items: [T]; let page: Int; let totalPages: Int; let total: Int?; let nextPage: Int? }
-struct QueueSource: Codable { let kind: String; var creatorId: String?; var url: String?; var order = "newest"; var items: [VideoItem]? }
+struct QueueSource: Codable { let kind: String; var creatorId: String?; var url: String?; var order = "newest"; var items: [VideoItem]?; var folderId: String?; var keyword: String? }
 struct QueueSnapshot: Codable {
     var source: QueueSource?
     var items: [VideoItem] = []
@@ -50,7 +50,7 @@ struct PlayerState: Codable {
 struct RelatedVideos: Decodable { let bvid: String; let items: [VideoItem] }
 extension QueueSnapshot {
     func isPlaylist(for player: PlayerState) -> Bool {
-        let multiple = source?.kind == "creator" || source?.kind == "collection" || (source?.kind == "manual" && items.count > 1)
+        let multiple = source?.kind == "creator" || source?.kind == "collection" || source?.kind == "favorites" || (source?.kind == "manual" && items.count > 1)
         guard multiple, items.indices.contains(index) else { return false }
         return items[index].bvid == player.bvid || (player.bvid.isEmpty && canResume)
     }

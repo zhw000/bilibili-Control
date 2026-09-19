@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {beforeEach,describe,expect,it} from 'vitest';
-import {durationSeconds,videoItems,pagination,creatorItems,collectionItems} from '../src/catalog';
+import {durationSeconds,videoItems,pagination,creatorItems,collectionItems,coverUrl} from '../src/catalog';
 import {bounded,urlAllowed} from '../src/types';
 beforeEach(()=>{document.body.innerHTML=''});
 describe('catalog adaptation',()=>{
@@ -13,3 +13,19 @@ describe('catalog adaptation',()=>{
  it('reads the live search user-card structure',()=>{document.body.innerHTML='<div class="b-user-info-card"><a href="https://space.bilibili.com/42"><img src="https://i0.hdslb.com/avatar.jpg"></a><div class="user-content"><h2><a href="https://space.bilibili.com/42">示例 UP</a></h2><p>介绍</p></div></div>';expect(creatorItems()).toEqual([{id:'42',name:'示例 UP',url:'https://space.bilibili.com/42',avatar:'https://i0.hdslb.com/avatar.jpg',description:'示例 UP介绍'}])});
 });
 it('rejects arbitrary navigation and nonfinite values',()=>{expect(urlAllowed('https://www.bilibili.com.attacker.test/')).toBe(false);expect(urlAllowed('javascript:alert(1)')).toBe(false);expect(()=>bounded(NaN,0,1)).toThrow();expect(()=>bounded(2,0,1)).toThrow()});
+it('reads real lazy covers before placeholder src is replaced',()=>{
+ document.body.innerHTML='<div class="bili-video-card"><a href="https://www.bilibili.com/video/BVLazy/" title="懒加载"><img src="data:image/gif;base64,AAAA" data-src="//i0.hdslb.com/bfs/archive/cover.jpg@320w.avif"></a></div>';
+ expect(videoItems()[0].cover).toBe('https://i0.hdslb.com/bfs/archive/cover.jpg');
+});
+it('reads picture source covers without waiting for image decoding',()=>{
+ document.body.innerHTML='<div class="bili-video-card"><a href="https://www.bilibili.com/video/BVPicture/" title="picture"><picture><source srcset="//i1.hdslb.com/cover.jpg@320w.avif 1x, //i1.hdslb.com/cover.jpg@640w.avif 2x"><img src="data:image/gif;base64,AAAA"></picture></a></div>';
+ expect(videoItems()[0].cover).toBe('https://i1.hdslb.com/cover.jpg');
+});
+it('preserves the cover when another link supplies a longer title',()=>{
+ document.body.innerHTML='<div class="video-card"><a href="https://www.bilibili.com/video/BVSame/" title="短"><img src="https://i0.hdslb.com/cover.jpg"></a></div><div class="video-card"><a href="https://www.bilibili.com/video/BVSame/" title="这是更完整的标题">这是更完整的标题</a></div>';
+ expect(videoItems()[0]).toMatchObject({title:'这是更完整的标题',cover:'https://i0.hdslb.com/cover.jpg'});
+});
+it('normalizes trusted CDN HTTP images without accepting arbitrary insecure URLs',()=>{
+ expect(coverUrl('http://i0.hdslb.com/c.jpg@320w.avif')).toBe('https://i0.hdslb.com/c.jpg');
+ expect(coverUrl('http://example.com/c.jpg')).toBeUndefined();expect(coverUrl('data:image/png;base64,AAAA')).toBeUndefined();
+});

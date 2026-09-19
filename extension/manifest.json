@@ -1,9 +1,9 @@
 {
-  "manifest_version":3,"name":"哔哩遥控 · Bili Remote","version":"0.2.0","description":"让已配对的 iPhone 控制这台电脑上的哔哩哔哩网页。",
+  "manifest_version":3,"name":"哔哩遥控 · Bili Remote","version":"0.3.0","description":"让已配对的 iPhone 和 Apple Watch 控制这台电脑上的哔哩哔哩网页。",
   "minimum_chrome_version":"116",
   "key":"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm4XDJNcX3woiAMQaQGo7DqvJwPF4ULHUHgbEqBE8ZeETSHhD6wLJ0BmzE4INoJTK3FRc/oo4fpOekCG4q7nLzB8+3KK/ylyjrDmzAoGsHl8QHYBLVqjfzGvhwrf3pKe39+3S50jNGf6Y+9EX1pSMckmRj6+gqJxDjaoR/n9BKgIlX790GJuAw7vJZi9nZ2blDuzy0FOXq2x06BIDaG+XLhu3j67z8WRD7NSSZf/JIdjyQzBZ7Wf1w3Ztd+quue4hygV0lAGmzF/awx2TMqT12leYQF+XlW1xPnM8XrOr+WdYhXeFZE9chq5CVoH3U1H53BJ/boI3bg26DaxLUgbrVwIDAQAB",
-  "permissions":["nativeMessaging","storage","alarms"],
-  "host_permissions":["https://www.bilibili.com/*","https://space.bilibili.com/*","https://search.bilibili.com/*"],
+  "permissions":["nativeMessaging","storage","alarms","cookies"],
+  "host_permissions":["https://www.bilibili.com/*","https://space.bilibili.com/*","https://search.bilibili.com/*","https://api.bilibili.com/*"],
   "background":{"service_worker":"background.js"},
   "action":{"default_title":"哔哩遥控","default_popup":"popup.html"},
   "content_scripts":[{"matches":["https://www.bilibili.com/*","https://space.bilibili.com/*","https://search.bilibili.com/*"],"js":["content.js"],"run_at":"document_start"}]

@@ -17,9 +17,13 @@ import SwiftUI
     init() {
         device = DeviceKeychain.load()
         if device == nil { selectedTab = 3 }
-        transport.onSnapshot = { [weak self] snapshot in self?.snapshot = snapshot; self?.connectionHint = nil }
-        transport.onStatus = { [weak self] status in self?.status = status }
+        transport.onSnapshot = { [weak self] snapshot in self?.snapshot = snapshot; self?.connectionHint = nil; PhoneWatchBridge.shared.publish(snapshot, connected: true) }
+        transport.onStatus = { [weak self] status in
+            guard let self else { return }; self.status = status
+            if status != .connected { PhoneWatchBridge.shared.publish(self.snapshot, connected: false) }
+        }
         transport.onConnectionError = { [weak self] message in self?.connectionHint = message }
+        PhoneWatchBridge.shared.onSnapshot = { [weak self] snapshot in self?.snapshot = snapshot }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
             device = nil; selectedTab = 3
@@ -42,7 +46,7 @@ import SwiftUI
     }
     var connected: Bool { status == .connected }
     var ready: Bool { connected && snapshot.browserConnected }
-    var currentCover: String? { snapshot.queue.items.first(where: { $0.bvid == snapshot.player.bvid })?.cover ?? snapshot.player.cover }
+    var currentCover: String? { snapshot.player.cover ?? snapshot.queue.items.first(where: { $0.bvid == snapshot.player.bvid })?.cover }
     var showsPlaylist: Bool { snapshot.queue.isPlaylist(for: snapshot.player) }
     var visibleRelatedVideos: [VideoItem] { relatedBvid == snapshot.player.bvid ? relatedVideos : [] }
     var relatedRequestKey: String { ready && !showsPlaylist ? snapshot.player.bvid : "" }
@@ -57,11 +61,20 @@ import SwiftUI
         relatedBvid = bvid; relatedLoading = true; relatedError = nil
         defer { if relatedGeneration == ticket { relatedLoading = false } }
         do {
-            let result: RelatedVideos = try await transport.request("player.related", params: ["bvid": .string(bvid)])
-            guard relatedGeneration == ticket, relatedRequestKey == bvid, !Task.isCancelled else { return }
-            guard result.bvid == bvid else { throw RemoteFailure(code: "target_changed", message: "电脑已切换视频，请刷新相关视频。") }
-            var seen = Set<String>()
-            relatedVideos = result.items.filter { $0.bvid != bvid && seen.insert($0.bvid).inserted }
+            for attempt in 0..<3 {
+                if attempt > 0 { try await Task.sleep(for: .seconds(2)) }
+                guard relatedGeneration == ticket, relatedRequestKey == bvid, !Task.isCancelled else { return }
+                let result: RelatedVideos = try await transport.request("player.related", params: ["bvid": .string(bvid)])
+                guard relatedGeneration == ticket, relatedRequestKey == bvid, !Task.isCancelled else { return }
+                guard result.bvid == bvid else { throw RemoteFailure(code: "target_changed", message: "电脑已切换视频，请刷新相关视频。") }
+                var seen = Set<String>()
+                relatedVideos = result.items.filter { $0.bvid != bvid && seen.insert($0.bvid).inserted }.map { item in
+                    var enriched = item
+                    if enriched.cover == nil { enriched.cover = relatedVideos.first(where: { $0.bvid == item.bvid })?.cover }
+                    return enriched
+                }
+                if relatedVideos.allSatisfy({ $0.cover != nil }) { break }
+            }
         } catch {
             guard relatedGeneration == ticket, relatedRequestKey == bvid, !Task.isCancelled else { return }
             relatedError = (error as? RemoteFailure)?.code == "unknown_method" ? "请更新电脑助手和 Chrome 扩展，以显示相关视频。" : error.localizedDescription
@@ -71,15 +84,15 @@ import SwiftUI
         if showsPlaylist { execute("queue.next") }
         else if let next = visibleRelatedVideos.first { play(next) }
     }
-    func connect() { if let device { transport.connect(device) } }
+    func connect() { if let device, transport.status == .disconnected { transport.connect(device) } }
     func background() { transport.disconnect() }
-    func forget() { transport.disconnect(); DeviceKeychain.clear(); device = nil; snapshot = Snapshot(); connectionHint = nil }
+    func forget() { transport.disconnect(); DeviceKeychain.clear(); device = nil; snapshot = Snapshot(); connectionHint = nil; PhoneWatchBridge.shared.clear() }
     func pair(_ text: String) async {
         guard !pairing else { return }; pairing = true; defer { pairing = false }
         do {
             let descriptor = try PairingDescriptor.parse(text)
             let config = try await transport.pair(descriptor, name: UIDevice.current.name)
-            try DeviceKeychain.save(config); device = config; connect(); selectedTab = 0
+            try DeviceKeychain.save(config); transport.disconnect(); device = config; connect(); selectedTab = 0
         } catch { self.error = error.localizedDescription }
     }
     func execute(_ method: String, _ params: [String: JSONValue] = [:]) {

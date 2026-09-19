@@ -9,6 +9,10 @@ final class ScreenTests: XCTestCase {
         app.tabBars.buttons["发现"].tap()
         XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
         capture(app, "02-discovery")
+        app.tabBars.buttons["收藏"].tap()
+        XCTAssertTrue(app.navigationBars["我的收藏"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["连接电脑，开始遥控"].exists)
+        capture(app, "10-favorites-disconnected")
     }
     @MainActor func testPlaybackLayoutWithTestState() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--preview-state"]; app.launch()
