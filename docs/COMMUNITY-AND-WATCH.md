@@ -28,7 +28,11 @@ Mac 上运行 `cd ios && xcodegen generate`，构建 `BiliRemote` scheme；生�
 - 对哔哩哔哩官方服务的只读验证：`/x/web-interface/card` 与 `/x/v2/reply` 返回 `code=0`。没有使用真实账号发表评论。
 - 新增 iOS 测试覆盖封面 URL、评论 ID、Siri / Watch 指令边界、恢复队列与手表状态序列化；UI 测试加入收藏入口。
 
-本机为 Windows，没有 Xcode：iOS / watchOS 编译、XCTest、Siri 识别和 Apple Watch 真机控制尚未执行。也尚未验证真实登录账号的收藏读取、评论发送与最新 UP 主网页搜索 / 排序。以上项目不能视为已验收。
+本机为 Windows，iOS 构建由私有仓库的 macOS Actions 完成。2026-09-19 构建已通过 iOS 单元 / 传输测试、标准与小屏幕 UI 测试、watchOS 模拟器编译、iPhone 真机归档及嵌入 Watch 包校验。已查看播放页、收藏未连接状态与小屏幕大字体截图。Siri 语音识别、Apple Watch 真机控制仍需签名安装后验证；真实登录账号的收藏读取、评论发送与最新 UP 主网页搜索 / 排序也尚未完成真机验收。
+
+打包时会额外核对 Siri provider、可发现的播放 Intent、调用短语、八种操作、中文语言声明和编译后的语音资源，防止仅凭 Xcode 编译成功误判 Siri 注册完整。首轮构建的语音短语训练日志出现异常，随后补齐 iPhone / Watch 的 `CFBundleDevelopmentRegion` 与 `CFBundleLocalizations`。[最终构建 35436899832](https://github.com/zhw000/bilibili-Control/actions/runs/35436899832) 全部通过：12 个 iOS 单元 / 传输测试、4 个标准屏 UI 测试和 4 个小屏 UI 测试，Watch 编译、真机归档及包校验成功。日志确认 `zh-Hans` 语音短语训练完成，IPA 包含 `Metadata.appintents/nlu/nlu.lzfse`，不再出现 SSU 归档错误。
+
+模拟器单元测试启动时仍记录一次 App Shortcuts 参数刷新错误（`LNMetadataProviderErrorDomain Code=9004`）；真机 IPA 已检查到 provider 类型名与短语资源。这个静态检查不能代替签名真机上的 Siri 注册及语音识别测试。
 
 ## 真机验收
 

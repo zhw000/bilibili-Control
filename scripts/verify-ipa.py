@@ -28,7 +28,9 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
     assert len(shortcuts) == 1 and len(shortcuts[0].get("phraseTemplates", [])) >= 2, "Siri invocation phrases missing"
     actions = next(item for item in metadata["enums"] if item["identifier"] == "SiriPlaybackAction")
     assert {item["identifier"] for item in actions["cases"]} == {"play", "pause", "next", "previous", "forward", "backward", "volumeUp", "volumeDown"}
-    print("Verified Siri provider, invocation phrases, Chinese language, and all eight playback actions")
+    nlu_path = infos[0][:-len("Info.plist")] + "Metadata.appintents/nlu/nlu.lzfse"
+    assert archive.read(nlu_path), "Compiled Siri phrase assets missing; inspect AppIntentsSSUTraining"
+    print("Verified Siri provider, compiled Chinese phrases, and all eight playback actions")
     watches = [name for name in archive.namelist() if name.startswith(infos[0][:-len("Info.plist")] + "Watch/") and name.endswith(".app/Info.plist")]
     assert len(watches) == 1, "Expected the embedded Apple Watch companion app"
     watch = plistlib.loads(archive.read(watches[0]))
