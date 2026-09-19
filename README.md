@@ -6,7 +6,7 @@
 
 ## 安装
 
-1. 安装 `BiliRemote-Setup-0.2.0.exe`，启动电脑助手。也可完整解压 `BiliRemote-Windows.zip`，用 PowerShell 运行其中的 `install.ps1` 注册当前用户的浏览器通信组件，然后启动 `BiliRemote.exe`。便携目录注册后不要移动。
+1. 安装 `BiliRemote-Setup-0.3.0.exe`，启动电脑助手。也可完整解压 `BiliRemote-Windows.zip`，用 PowerShell 运行其中的 `install.ps1` 注册当前用户的浏览器通信组件，然后启动 `BiliRemote.exe`。便携目录注册后不要移动。
 2. 在 Chrome 打开 `chrome://extensions`，开启开发者模式，点击“加载已解压的扩展程序”，选择助手安装目录内的 `extension` 文件夹。默认安装目录为 `%LOCALAPPDATA%\Programs\BiliRemote`。扩展固定 ID 为 `penfpdlcbljgooeeabnkphfggjhbfnnj`。
 3. 在助手中点击“允许局域网连接”，接受 Windows 的管理员提示。这条规则只允许专用网络中同一子网连接该程序；网络设为公用时不会生效。
 4. 给 `BiliRemote-unsigned.ipa` 使用你自己的方式签名并安装到 iPhone。它是真机 arm64 应用，未包含个人证书或描述文件。
@@ -46,7 +46,7 @@ xcodegen generate
 open BiliRemote.xcodeproj
 ```
 
-GitHub Actions 工作流分别构建 Windows/Chrome 和 iOS。下载 `BiliRemote-iOS-unsigned` 和 `BiliRemote-Windows-Installer` 即可；安装程序内含扩展。`BiliRemote-Chrome` 提供独立扩展，`BiliRemote-Windows-Portable` 是可选便携包。无需向 GitHub 上传签名证书。`scripts/verify-ipa.py` 会检查 IPA 的真机平台、arm64 可执行文件和权限说明。
+GitHub Actions 工作流分别构建 Windows/Chrome 和 iOS。下载 `BiliRemote-iOS-unsigned` 和 `BiliRemote-Windows-Installer` 即可；安装程序内含扩展。`BiliRemote-Chrome` 提供独立扩展，`BiliRemote-Windows-Portable` 是可选便携包。无需向 GitHub 上传签名证书。`scripts/verify-ipa.py` 会检查 IPA 的真机平台、arm64 可执行文件和权限说明。Actions 产物空间不足时，可手动触发工作流并选择 `delivery=draft-release`；它会运行 iOS / Watch 构建及测试，将 IPA、SHA-256 和界面截图保存到当前仓库的草稿 Release，不会自动公开发布。
 
 更新这批功能需要同时更新电脑助手、Chrome 扩展与 iPhone App。扩展新增哔哩哔哩 API 域名访问及 cookies 权限，用于读取收藏和在浏览器内取得评论 CSRF 值；不会把浏览器 Cookie 传给手机或电脑助手。更新后在 `chrome://extensions` 重新加载扩展并检查权限提示。
 

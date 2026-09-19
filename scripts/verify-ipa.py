@@ -1,5 +1,6 @@
 """Validate a device IPA independently of Xcode build success."""
 import plistlib
+import json
 import struct
 import sys
 import zipfile
@@ -16,6 +17,18 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
     assert info["NSLocalNetworkUsageDescription"] and info["NSCameraUsageDescription"]
     assert info.get("MinimumOSVersion") == "17.0", info.get("MinimumOSVersion")
     assert not info.get("UIBackgroundModes"), "Remote playback must not require fake background audio"
+    assert info.get("CFBundleDevelopmentRegion") == "zh-Hans", "Siri phrases require the correct development language"
+    assert "zh-Hans" in info.get("CFBundleLocalizations", []), "Chinese Siri localization must be declared"
+    metadata_path = infos[0][:-len("Info.plist")] + "Metadata.appintents/extract.actionsdata"
+    metadata = json.loads(archive.read(metadata_path))
+    assert metadata.get("autoShortcutProviderMangledName"), "App Shortcuts provider was not extracted"
+    intent = metadata.get("actions", {}).get("PlaybackIntent")
+    assert intent and intent.get("isDiscoverable"), "Playback intent must be discoverable"
+    shortcuts = [item for item in metadata.get("autoShortcuts", []) if item.get("actionIdentifier") == "PlaybackIntent"]
+    assert len(shortcuts) == 1 and len(shortcuts[0].get("phraseTemplates", [])) >= 2, "Siri invocation phrases missing"
+    actions = next(item for item in metadata["enums"] if item["identifier"] == "SiriPlaybackAction")
+    assert {item["identifier"] for item in actions["cases"]} == {"play", "pause", "next", "previous", "forward", "backward", "volumeUp", "volumeDown"}
+    print("Verified Siri provider, invocation phrases, Chinese language, and all eight playback actions")
     watches = [name for name in archive.namelist() if name.startswith(infos[0][:-len("Info.plist")] + "Watch/") and name.endswith(".app/Info.plist")]
     assert len(watches) == 1, "Expected the embedded Apple Watch companion app"
     watch = plistlib.loads(archive.read(watches[0]))
