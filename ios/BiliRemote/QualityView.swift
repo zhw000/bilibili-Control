@@ -16,6 +16,9 @@ struct QualityView: View {
                         LabeledContent("当前档位", value: quality.displayName)
                         if let width = quality.width, let height = quality.height, width > 0, height > 0 {
                             LabeledContent("当前画面", value: "\(width) × \(height)")
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("当前画面").accessibilityValue("\(width) × \(height)")
+                                .accessibilityIdentifier("qualityResolution")
                         }
                     }
                     Section {

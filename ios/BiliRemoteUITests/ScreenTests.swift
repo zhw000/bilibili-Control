@@ -34,7 +34,9 @@ final class ScreenTests: XCTestCase {
         scrollTo(app.buttons["videoQuality"], in: app)
         app.buttons["videoQuality"].tap()
         XCTAssertTrue(app.navigationBars["视频清晰度"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["1920 × 1080"].exists)
+        let resolution = app.descendants(matching: .any).matching(identifier: "qualityResolution").firstMatch
+        XCTAssertTrue(resolution.exists)
+        XCTAssertEqual(resolution.value as? String, "1920 × 1080")
         XCTAssertFalse(app.buttons["quality-120"].isEnabled)
         XCTAssertTrue(app.buttons["quality-80"].isEnabled)
         // Expand the sheet before inspecting lower options on compact devices.
