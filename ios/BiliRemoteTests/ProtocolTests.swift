@@ -2,6 +2,19 @@ import XCTest
 @testable import BiliRemote
 
 final class ProtocolTests: XCTestCase {
+    func testQualityStateAndOlderHostCompatibility() throws {
+        let original = try JSONEncoder().encode(PlayerState(bvid: "BVtest"))
+        XCTAssertNil(try JSONDecoder().decode(PlayerState.self, from: original).quality)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+        json["quality"] = ["currentId": "80", "currentLabel": "1080P 高清", "width": 1920, "height": 1080, "options": [["id": "112", "label": "1080P 高码率", "badge": "大会员", "disabled": false], ["id": "0", "label": "自动", "disabled": false]]]
+        let state = try JSONDecoder().decode(PlayerState.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(state.quality?.displayName, "1080P 高清")
+        XCTAssertEqual(state.quality?.width, 1920)
+        XCTAssertEqual(state.quality?.options.last?.id, "0")
+        XCTAssertEqual(state.quality?.options.first?.disabled, false)
+        var automatic = try XCTUnwrap(state.quality); automatic.currentId = "0"
+        XCTAssertEqual(automatic.displayName, "自动")
+    }
     func testPlaylistAndRelatedVideoSelection() {
         let video = VideoItem(bvid: "BV1", title: "第一条", url: "https://www.bilibili.com/video/BV1/")
         let player = PlayerState(bvid: "BV1")

@@ -33,7 +33,7 @@ jobs:
         run: ./scripts/build-windows.ps1
       - name: Require installer
         shell: pwsh
-        run: if (-not (Test-Path artifacts/BiliRemote-Setup-0.3.0.exe)) { throw 'Windows installer missing' }
+        run: if (-not (Test-Path artifacts/BiliRemote-Setup-0.4.0.exe)) { throw 'Windows installer missing' }
       - uses: actions/upload-artifact@v4
         with:
           name: BiliRemote-Windows-Installer
@@ -111,7 +111,7 @@ jobs:
           TAG="delivery-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           shasum -a 256 artifacts/BiliRemote-unsigned.ipa > artifacts/SHA256SUMS.txt
           printf 'Unsigned iPhone IPA with embedded Apple Watch app. Built from %s; iOS tests, compact layout checks and device IPA verification passed. Sign the iPhone and Watch bundles before installation.\n' "$GITHUB_SHA" > artifacts/release-notes.txt
-          gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "BiliRemote 0.3.0 · iPhone and Watch" --notes-file artifacts/release-notes.txt
+          gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "BiliRemote 0.4.0 · iPhone and Watch" --notes-file artifacts/release-notes.txt
           gh release upload "$TAG" artifacts/BiliRemote-unsigned.ipa artifacts/SHA256SUMS.txt
           ditto -c -k --keepParent artifacts/iOS-screenshots artifacts/BiliRemote-iOS-screenshots.zip
           gh release upload "$TAG" artifacts/BiliRemote-iOS-screenshots.zip

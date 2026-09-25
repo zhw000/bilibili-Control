@@ -53,6 +53,12 @@ var conflict = await phone.Request("player.command", new { action = "seekBy", va
 Check(conflict.GetProperty("error").Text("code") == "id_conflict", "conflicting request ID rejected");
 var boundary = await phone.Request("system.volume", new { value = 1.1 });
 Check(boundary.GetProperty("error").Text("code") == "out_of_range", "system-volume range enforced before hardware access");
+var qualityTarget = browser.State;
+var qualityReply = await phone.Request("player.command", new { action = "quality", value = "64", bvid = qualityTarget.Bvid, part = qualityTarget.Part }, "quality-once");
+await phone.Request("player.command", new { action = "quality", value = "64", bvid = qualityTarget.Bvid, part = qualityTarget.Part }, "quality-once");
+Check(qualityReply.Flag("ok") && qualityReply.GetProperty("result").GetProperty("quality").Text("currentId") == "64" && browser.QualityCommands == 1 && browser.LastQuality.Text("bvid") == qualityTarget.Bvid && browser.LastQuality.Number("part") == qualityTarget.Part, "quality command roundtrip preserves target and is deduplicated");
+var qualitySnapshot = await phone.Request("snapshot", new { });
+Check(qualitySnapshot.GetProperty("result").GetProperty("player").GetProperty("quality").GetProperty("options").GetArrayLength() == 2 && server.Queue.Snapshot.Index == 0 && browser.State.CurrentTime == qualityTarget.CurrentTime, "quality choices survive host snapshots without changing progress or queue");
 var ended = browser.State with { Ended = true, Part = 1, PartCount = 1 };
 await browser.Event("player.ended", ended); await browser.Event("player.ended", ended);
 await WaitFor(() => server.Queue.Snapshot.Index == 1);
@@ -144,6 +150,8 @@ sealed class BrowserFixture : IDisposable
     public PlayerState State { get; private set; } = new();
     public int RelativeCommands { get; private set; }
     public int CommentSubmissions { get; private set; }
+    public int QualityCommands { get; private set; }
+    public JsonElement LastQuality { get; private set; }
     public JsonElement LastCatalog { get; private set; }
     public List<string> OpenedVideos { get; } = [];
     public async Task Connect()
@@ -170,6 +178,7 @@ sealed class BrowserFixture : IDisposable
                             State = new(Bvid: video.Bvid, Title: video.Title, Url: video.Url, Duration: 600, Paused: false, PlaybackId: request.Params.Text("playbackId"));
                             OpenedVideos.Add(video.Bvid); result = State; break;
                         case "player.command":
+                            if (request.Params.Text("action") == "quality") { QualityCommands++; LastQuality = request.Params.Clone(); State = State with { Quality = new([new("80", "1080P 高清"), new("64", "720P 准高清")], request.Params.Text("value"), "720P 准高清", 1280, 720) }; }
                             if (request.Params.Text("action") == "seekBy") { RelativeCommands++; State = State with { CurrentTime = State.CurrentTime + request.Params.Number("value") }; }
                             result = State; break;
                         case "player.related":

@@ -20,7 +20,7 @@ async function releaseDisconnectedSession(){
 }
 function connect(){
   if(port)return;
-  try{port=chrome.runtime.connectNative(HOST);port.onMessage.addListener((req:Request)=>{handle(req).then(result=>port?.postMessage({v:1,id:req.id,ok:true,result}),error=>{try{port?.postMessage({v:1,id:req.id,ok:false,error:{code:error.code??'extension_error',message:error.message??'扩展操作失败'}})}catch{}})});port.onDisconnect.addListener(()=>{port=undefined;chrome.action.setBadgeText({text:'!'});chrome.action.setBadgeBackgroundColor({color:'#D55D68'});void chrome.runtime.lastError;void releaseDisconnectedSession().catch(()=>{});});port.postMessage({v:1,event:'bridge.ready',data:{version:'0.1.0'}});chrome.action.setBadgeText({text:''})}catch{port=undefined}
+  try{port=chrome.runtime.connectNative(HOST);port.onMessage.addListener((req:Request)=>{handle(req).then(result=>port?.postMessage({v:1,id:req.id,ok:true,result}),error=>{try{port?.postMessage({v:1,id:req.id,ok:false,error:{code:error.code??'extension_error',message:error.message??'扩展操作失败'}})}catch{}})});port.onDisconnect.addListener(()=>{port=undefined;chrome.action.setBadgeText({text:'!'});chrome.action.setBadgeBackgroundColor({color:'#D55D68'});void chrome.runtime.lastError;void releaseDisconnectedSession().catch(()=>{});});port.postMessage({v:1,event:'bridge.ready',data:{version:chrome.runtime.getManifest().version}});chrome.action.setBadgeText({text:''})}catch{port=undefined}
 }
 async function tabExists(id:number|undefined){if(id===undefined||id===null)return false;try{const t=await chrome.tabs.get(id);return !!t.url&&urlAllowed(t.url)}catch{return false}}
 async function content(id:number,method:string,params:unknown={}):Promise<any>{
@@ -98,6 +98,13 @@ async function handle(req:Request):Promise<unknown>{
     case 'player.manage':{managed=Boolean(p.enabled);if(currentBinding)currentBinding.managed=managed;const result=targetId&&await tabExists(targetId)?await content(targetId,'player.manage',{enabled:managed}):{};if(!managed)originalAutoplay=undefined;await remember();return result;}
     case 'player.state':return targetId&&await tabExists(targetId)?content(targetId,'player.state'):{};
     case 'player.command':{
+      if(p.action==='quality'){
+        const id=targetId;
+        if(id===undefined||!await tabExists(id))throw new RemoteError('no_player','请先选择一个播放视频的标签页');
+        const result=await content(id,'player.command',p);
+        if(id!==targetId)throw new RemoteError('target_changed','控制标签页已切换，请重新选择清晰度');
+        return result;
+      }
       const id=await target();if(p.action==='fullscreen'){
         const tab=await chrome.tabs.get(id),win=await chrome.windows.get(tab.windowId);const enabled=Boolean(p.value);
         if(enabled&&!windowStates.has(win.id!))windowStates.set(win.id!,win.state??'normal');

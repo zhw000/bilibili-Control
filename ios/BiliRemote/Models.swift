@@ -37,6 +37,20 @@ struct QueueSnapshot: Codable {
     var message: String?
     var playbackId: String?
 }
+struct VideoQualityOption: Codable, Identifiable {
+    let id: String
+    let label: String
+    var badge: String?
+    var disabled = false
+}
+struct PlaybackQuality: Codable {
+    var currentId: String?
+    var currentLabel: String?
+    var options: [VideoQualityOption] = []
+    var width: Int?
+    var height: Int?
+    var displayName: String { currentId == "0" ? "自动" : currentLabel ?? options.first(where: { $0.id == currentId })?.label ?? "选择清晰度" }
+}
 struct PlayerState: Codable {
     var bvid = "", title = "", url = ""
     var currentTime: Double = 0, duration: Double = 0
@@ -46,6 +60,7 @@ struct PlayerState: Codable {
     var danmaku = true, fullscreen = false
     var playbackId: String?, errorCode: String?, errorMessage: String?
     var cover: String?
+    var quality: PlaybackQuality?
 }
 struct RelatedVideos: Decodable { let bvid: String; let items: [VideoItem] }
 extension QueueSnapshot {

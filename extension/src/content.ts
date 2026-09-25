@@ -2,12 +2,14 @@ import {coverUrl,openCollection,readCatalog,turnPage} from './catalog';
 import {readRelated} from './related';
 import {bounded,RemoteError} from './types';
 import {danmakuControl,danmakuOn,isWebFullscreen,partInfo} from './player-dom';
+import {readQuality,switchQuality} from './quality';
 
 let managed=false,playbackId:string|undefined,endedSent=false,lastError='';
 let previousAutoplay:boolean|undefined;
+let qualitySwitching=false;
 function video():HTMLVideoElement|null{return document.querySelector<HTMLVideoElement>('.bpx-player-video-wrap video,video')}
 function emit(event:string,data:unknown){chrome.runtime.sendMessage({event,data}).catch(()=>{})}
-function snapshot(){const v=video();return {bvid:location.pathname.match(/BV[\w]+/)?.[0]??'',title:document.querySelector('h1')?.textContent?.trim()??document.title.replace(/_哔哩哔哩.*$/,''),url:location.href,cover:coverUrl(document.querySelector('meta[property="og:image"]')?.getAttribute('content')),currentTime:Number.isFinite(v?.currentTime)?v!.currentTime:0,duration:Number.isFinite(v?.duration)?v!.duration:0,paused:v?.paused??true,ended:v?.ended??false,...partInfo(),volume:v?.volume??1,muted:v?.muted??false,rate:v?.playbackRate??1,danmaku:danmakuOn(),fullscreen:isWebFullscreen(),playbackId}}
+function snapshot(){const v=video();return {bvid:location.pathname.match(/BV[\w]+/)?.[0]??'',title:document.querySelector('h1')?.textContent?.trim()??document.title.replace(/_哔哩哔哩.*$/,''),url:location.href,cover:coverUrl(document.querySelector('meta[property="og:image"]')?.getAttribute('content')),currentTime:Number.isFinite(v?.currentTime)?v!.currentTime:0,duration:Number.isFinite(v?.duration)?v!.duration:0,paused:v?.paused??true,ended:v?.ended??false,...partInfo(),volume:v?.volume??1,muted:v?.muted??false,rate:v?.playbackRate??1,danmaku:danmakuOn(),fullscreen:isWebFullscreen(),quality:readQuality(),playbackId}}
 function autoplayControl():HTMLElement|null{return document.querySelector('.next-play input,.auto-play input,.video-pod__auto-play input,.bpx-player-ctrl-setting-autoplay input,.bpx-player-ctrl-setting-autoplay .bui-switch-input')}
 function manage(value:boolean,original?:unknown){
   const control=autoplayControl();
@@ -42,6 +44,13 @@ async function command(params:Record<string,unknown>){
   const action=String(params.action);if(action==='fullscreen'){fillPlayer(Boolean(params.value));return snapshot()}
   const v=video();if(!v)throw new RemoteError('no_player','请先选择一个视频');
   switch(action){
+    case 'quality':{
+      if(qualitySwitching)throw new RemoteError('quality_busy','清晰度正在切换，请稍候');
+      if(typeof params.bvid!=='string'||!/^BV[0-9A-Za-z]+$/.test(params.bvid)||typeof params.part!=='number'||!Number.isInteger(params.part)||params.part<1)throw new RemoteError('invalid_request','缺少有效的视频信息，请重新选择清晰度');
+      qualitySwitching=true;
+      try{await switchQuality(params.value,()=>params.bvid===location.pathname.match(/BV[\w]+/)?.[0]&&params.part===partInfo().part)}finally{qualitySwitching=false}
+      break;
+    }
     case 'play':try{await v.play()}catch{throw new RemoteError('autoplay_blocked','请先在电脑视频区域点击一次播放')}break;
     case 'pause':v.pause();break;
     case 'seek':v.currentTime=Math.min(bounded(params.value,0,864000),Number.isFinite(v.duration)?v.duration:864000);endedSent=false;break;

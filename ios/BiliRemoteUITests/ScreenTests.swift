@@ -28,6 +28,22 @@ final class ScreenTests: XCTestCase {
         XCTAssertEqual(app.scrollViews.count, 1)
         capture(app, "05-inline-queue")
     }
+    @MainActor func testQualityPickerShowsCurrentAndUnavailableChoices() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--preview-state"]; app.launch()
+        XCTAssertTrue(app.staticTexts["playerTitle"].waitForExistence(timeout: 10))
+        scrollTo(app.buttons["videoQuality"], in: app)
+        app.buttons["videoQuality"].tap()
+        XCTAssertTrue(app.navigationBars["视频清晰度"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["1920 × 1080"].exists)
+        XCTAssertFalse(app.buttons["quality-120"].isEnabled)
+        XCTAssertTrue(app.buttons["quality-80"].isEnabled)
+        // Expand the sheet before inspecting lower options on compact devices.
+        app.swipeUp()
+        XCTAssertTrue(app.buttons["quality-0"].exists)
+        capture(app, "11-video-quality")
+        app.buttons["完成"].tap()
+        XCTAssertTrue(app.navigationBars["正在播放"].exists)
+    }
     @MainActor func testRelatedVideosSharePlayerScrollAndFitLandscape() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--preview-state", "--preview-related"]; app.launch()
         XCTAssertTrue(app.staticTexts["playerTitle"].waitForExistence(timeout: 10))

@@ -6,6 +6,7 @@ struct PlayerView: View {
     @State private var seekValue: Double = 0
     @State private var showTime = false
     @State private var showVolume = false
+    @State private var showQuality = false
     @State private var timeText = ""
     private var player: PlayerState { model.snapshot.player }
     private var hasNext: Bool {
@@ -34,6 +35,15 @@ struct PlayerView: View {
                         progress
                         playbackControls
                         options
+                        Button { showQuality = true } label: {
+                            HStack(spacing: 12) {
+                                Label("清晰度", systemImage: "4k.tv")
+                                Spacer(minLength: 8)
+                                Text(player.quality?.displayName ?? "选择清晰度").foregroundStyle(.secondary).lineLimit(1)
+                                Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                            }.font(.subheadline).padding(14).frame(maxWidth: .infinity, minHeight: 48)
+                                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                        }.buttonStyle(.plain).disabled(!model.ready).accessibilityIdentifier("videoQuality")
                         NavigationLink(value: VideoCommentsRoute(bvid: player.bvid)) {
                             Label("查看评论 / 发表评论", systemImage: "bubble.left.and.bubble.right").font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
                         }.buttonStyle(.bordered).disabled(!model.ready)
@@ -48,6 +58,7 @@ struct PlayerView: View {
         }
         .background(Color(.systemGroupedBackground)).navigationTitle("正在播放").navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: VideoCommentsRoute.self) { route in CommentsView(bvid: route.bvid) }
+        .sheet(isPresented: $showQuality) { QualityView().environmentObject(model).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .task(id: model.relatedRequestKey) { await model.loadRelated() }
         .onChange(of: player.currentTime, initial: true) { _, value in if !seeking { seekValue = max(0, min(value, max(player.duration, 1))) } }
         .onChange(of: player.bvid) { _, _ in seeking = false; seekValue = max(0, min(player.currentTime, max(player.duration, 1))) }

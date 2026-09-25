@@ -32,6 +32,7 @@ import SwiftUI
                 let second = VideoItem(bvid: "BVPreview2", title: "下一站，发现更多有趣的事", url: "https://www.bilibili.com/", duration: 620)
                 snapshot.computerName = "我的电脑"; snapshot.browserConnected = true
                 snapshot.player = PlayerState(bvid: first.bvid, title: first.title, url: first.url, currentTime: 187, duration: 754, paused: false, volume: 0.7)
+                snapshot.player.quality = PlaybackQuality(currentId: "80", currentLabel: "1080P 高清", options: [VideoQualityOption(id: "120", label: "4K 超清", badge: "当前不可用", disabled: true), VideoQualityOption(id: "80", label: "1080P 高清"), VideoQualityOption(id: "64", label: "720P 准高清"), VideoQualityOption(id: "32", label: "480P 标清"), VideoQualityOption(id: "16", label: "360P 流畅"), VideoQualityOption(id: "0", label: "自动")], width: 1920, height: 1080)
                 snapshot.queue = QueueSnapshot(source: QueueSource(kind: "creator", creatorId: "1"), items: [first, second], index: 0, active: true)
                 if ProcessInfo.processInfo.arguments.contains("--preview-related") {
                     snapshot.queue = QueueSnapshot(source: QueueSource(kind: "manual"), items: [first], index: 0, active: true)
@@ -101,6 +102,12 @@ import SwiftUI
     func play(_ video: VideoItem) { do { execute("player.open", ["video": try JSONValue.from(video)]); selectedTab = 1 } catch { self.error = error.localizedDescription } }
     func startQueue(_ source: QueueSource) {
         do { if case .object(let params) = try JSONValue.from(source) { execute("queue.start", params); selectedTab = 1 } } catch { self.error = error.localizedDescription }
+    }
+    func setQuality(_ id: String, bvid: String, part: Int) async throws {
+        guard ready else { throw RemoteFailure.disconnected }
+        let updated: PlayerState = try await transport.request("player.command", params: ["action": .string("quality"), "value": .string(id), "bvid": .string(bvid), "part": .number(Double(part))])
+        guard snapshot.player.bvid == bvid, snapshot.player.part == part, updated.bvid == bvid, updated.part == part else { return }
+        snapshot.player = updated
     }
     func control(_ action: String, value: JSONValue? = nil) { var params: [String: JSONValue] = ["action": .string(action)]; params["value"] = value; execute("player.command", params) }
 }
