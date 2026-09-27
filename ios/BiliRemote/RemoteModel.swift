@@ -6,7 +6,7 @@ import SwiftUI
     @Published var device: DeviceConfig?
     @Published var error: String?
     @Published var connectionHint: String?
-    @Published var selectedTab = 0
+    @Published var selectedTab = AppTab.home
     @Published var pairing = false
     @Published private(set) var relatedVideos: [VideoItem] = []
     @Published private(set) var relatedLoading = false
@@ -16,7 +16,7 @@ import SwiftUI
     let transport = RemoteTransport()
     init() {
         device = DeviceKeychain.load()
-        if device == nil { selectedTab = 3 }
+        if device == nil { selectedTab = .devices }
         transport.onSnapshot = { [weak self] snapshot in self?.snapshot = snapshot; self?.connectionHint = nil; PhoneWatchBridge.shared.publish(snapshot, connected: true) }
         transport.onStatus = { [weak self] status in
             guard let self else { return }; self.status = status
@@ -26,7 +26,7 @@ import SwiftUI
         PhoneWatchBridge.shared.onSnapshot = { [weak self] snapshot in self?.snapshot = snapshot }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
-            device = nil; selectedTab = 3
+            device = nil; selectedTab = .devices
             if ProcessInfo.processInfo.arguments.contains("--preview-state") {
                 let first = VideoItem(bvid: "BVPreview1", title: "保持好奇，探索每一个新世界，一起出发去看山川、森林与海洋", url: "https://www.bilibili.com/", cover: "preview-cover", duration: 754, creatorId: "1", creatorName: "界面测试")
                 let second = VideoItem(bvid: "BVPreview2", title: "下一站，发现更多有趣的事", url: "https://www.bilibili.com/", duration: 620)
@@ -40,7 +40,7 @@ import SwiftUI
                     relatedVideos = (1...12).map { number in VideoItem(bvid: "BVRelated\(number)", title: "相关视频 \(number) · 和朋友一起发现新的风景", url: "https://www.bilibili.com/", cover: "preview-cover", duration: Double(300 + number), creatorName: "旅行记录") }
                 }
                 snapshot.systemVolume = SystemVolume(value: 0.45, muted: false, deviceName: "扬声器", available: true)
-                status = .connected; selectedTab = 1
+                status = .connected; selectedTab = .player
             }
         }
         #endif
@@ -93,15 +93,15 @@ import SwiftUI
         do {
             let descriptor = try PairingDescriptor.parse(text)
             let config = try await transport.pair(descriptor, name: UIDevice.current.name)
-            try DeviceKeychain.save(config); transport.disconnect(); device = config; connect(); selectedTab = 0
+            try DeviceKeychain.save(config); transport.disconnect(); device = config; connect(); selectedTab = .home
         } catch { self.error = error.localizedDescription }
     }
     func execute(_ method: String, _ params: [String: JSONValue] = [:]) {
         Task { do { let _: EmptyResponse = try await transport.request(method, params: params) } catch { self.error = error.localizedDescription } }
     }
-    func play(_ video: VideoItem) { do { execute("player.open", ["video": try JSONValue.from(video)]); selectedTab = 1 } catch { self.error = error.localizedDescription } }
+    func play(_ video: VideoItem) { do { execute("player.open", ["video": try JSONValue.from(video)]); selectedTab = .player } catch { self.error = error.localizedDescription } }
     func startQueue(_ source: QueueSource) {
-        do { if case .object(let params) = try JSONValue.from(source) { execute("queue.start", params); selectedTab = 1 } } catch { self.error = error.localizedDescription }
+        do { if case .object(let params) = try JSONValue.from(source) { execute("queue.start", params); selectedTab = .player } } catch { self.error = error.localizedDescription }
     }
     func setQuality(_ id: String, bvid: String, part: Int) async throws {
         guard ready else { throw RemoteFailure.disconnected }

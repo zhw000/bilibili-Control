@@ -36,6 +36,16 @@ it('does not reuse the old auto-start preference as a next-video preference',asy
   contentMessage({event:'content.ready'},{tab:{id:1}},()=>{});await flush();
   expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(1,{method:'player.attach',params:expect.objectContaining({originalAutoNext:undefined})});
 });
+it('reads the homepage feed through fixed API requests without touching tabs',async()=>{
+  const wbi_img={img_url:'https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png',sub_url:'https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png'};
+  const fetchMock=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({code:0,data:{isLogin:true,uname:'账号',wbi_img}})}).mockResolvedValueOnce({ok:true,json:async()=>({code:0,data:{item:[]}})});
+  vi.stubGlobal('fetch',fetchMock);
+  nativeMessage({v:1,id:'feed-1',method:'home.feed',params:{page:1}});
+  const reply=await vi.waitFor(()=>{const found=post.mock.calls.find(([message])=>message.id==='feed-1')?.[0];if(!found)throw new Error('pending');return found});
+  expect(reply).toEqual({v:1,id:'feed-1',ok:true,result:{loggedIn:true,accountName:'账号',items:[],page:1,nextPage:2}});
+  expect(fetchMock.mock.calls.map(([url])=>new URL(url).pathname)).toEqual(['/x/web-interface/nav','/x/web-interface/wbi/index/top/feed/rcmd']);
+  expect(chromeMock.tabs.sendMessage).not.toHaveBeenCalled();
+});
 it('does not reattach a stopped queue when the page reloads',async()=>{
   await request('player.manage',{enabled:false});chromeMock.tabs.sendMessage.mockClear();
   contentMessage({event:'content.ready'},{tab:{id:1}},()=>{});await flush();expect(chromeMock.tabs.sendMessage).not.toHaveBeenCalled();

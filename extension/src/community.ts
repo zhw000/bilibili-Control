@@ -5,7 +5,7 @@ import {bounded,numericId,PageResult,RemoteError,VideoItem} from './types';
 // never included in replies to the paired computer or phone.
 const origin='https://api.bilibili.com';
 type ObjectData=Record<string,any>;
-export async function biliRequest(path:string,params:Record<string,string>={},body?:URLSearchParams):Promise<any>{
+export async function biliRequest(path:string,params:Record<string,string>={},body?:URLSearchParams,accepted:number[]=[]):Promise<any>{
   const url=new URL(path,origin);url.search=new URLSearchParams(params).toString();
   let response:Response;
   try{response=await fetch(url.href,{credentials:'include',method:body?'POST':'GET',body,signal:AbortSignal.timeout(15000)});}
@@ -13,7 +13,7 @@ export async function biliRequest(path:string,params:Record<string,string>={},bo
   if(!response.ok)throw new RemoteError(body?'comment_uncertain':'api_unavailable',body?'发送结果尚未确认，请刷新评论核对后再决定是否重发。':`哔哩哔哩暂时不可用（${response.status}）`);
   let result:ObjectData;
   try{result=await response.json();}catch{throw new RemoteError(body?'comment_uncertain':'api_changed',body?'发送结果尚未确认，请刷新评论核对后再决定是否重发。':'哔哩哔哩返回格式已变化，请更新扩展');}
-  if(result.code!==0){
+  if(result.code!==0&&!accepted.includes(result.code)){
     const code=result.code===-101?'login_required':[-111,-403].includes(result.code)?'login_expired':[-352,-412].includes(result.code)?'verification_required':result.code===12002?'comments_closed':'bilibili_error';
     const message=code==='login_required'?'请先在电脑 Chrome 登录哔哩哔哩':code==='login_expired'?'登录状态已失效，请在电脑重新登录后重试':code==='verification_required'?'请在电脑浏览器完成安全验证后重试':code==='comments_closed'?'这个视频已关闭评论':String(result.message||'哔哩哔哩操作失败').slice(0,200);
     throw new RemoteError(code,message);

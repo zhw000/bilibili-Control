@@ -16,14 +16,16 @@ import AppIntents
     }
 }
 extension Color { static let biliPink = Color(red: 0.91, green: 0.34, blue: 0.48) }
+enum AppTab: Hashable { case home, discover, player, favorites, devices }
 struct RootView: View {
     @EnvironmentObject private var model: RemoteModel
     var body: some View {
         TabView(selection: $model.selectedTab) {
-            NavigationStack { SearchView().safeAreaInset(edge: .bottom) { MiniPlayer() } }.tabItem { Label("发现", systemImage: "magnifyingglass") }.tag(0)
-            NavigationStack { PlayerView() }.tabItem { Label("播放", systemImage: "play.circle") }.tag(1)
-            NavigationStack { FavoritesView().safeAreaInset(edge: .bottom) { MiniPlayer() } }.tabItem { Label("收藏", systemImage: "star") }.tag(2)
-            NavigationStack { DevicesView() }.tabItem { Label("设备", systemImage: "desktopcomputer") }.tag(3)
+            NavigationStack { HomeView().safeAreaInset(edge: .bottom) { MiniPlayer() } }.tabItem { Label("首页", systemImage: "house") }.tag(AppTab.home)
+            NavigationStack { SearchView().safeAreaInset(edge: .bottom) { MiniPlayer() } }.tabItem { Label("发现", systemImage: "magnifyingglass") }.tag(AppTab.discover)
+            NavigationStack { PlayerView() }.tabItem { Label("播放", systemImage: "play.circle") }.tag(AppTab.player)
+            NavigationStack { FavoritesView().safeAreaInset(edge: .bottom) { MiniPlayer() } }.tabItem { Label("收藏", systemImage: "star") }.tag(AppTab.favorites)
+            NavigationStack { DevicesView() }.tabItem { Label("设备", systemImage: "desktopcomputer") }.tag(AppTab.devices)
         }
     }
 }
@@ -58,7 +60,7 @@ struct MiniPlayer: View {
     var body: some View {
         if !model.snapshot.player.bvid.isEmpty {
             HStack(spacing: 12) {
-                Button { model.selectedTab = 1 } label: {
+                Button { model.selectedTab = .player } label: {
                     HStack(spacing: 12) { CoverView(url: model.currentCover).frame(width: 54, height: 38).clipShape(RoundedRectangle(cornerRadius: 7)); VStack(alignment: .leading, spacing: 3) { Text(model.snapshot.player.title).font(.subheadline.weight(.medium)).lineLimit(1); Text(model.ready ? "正在电脑上播放" : "连接已断开").font(.caption).foregroundStyle(.secondary) } }.foregroundStyle(.primary)
                 }.buttonStyle(.plain)
                 Spacer(minLength: 0)
@@ -89,7 +91,7 @@ struct ConnectionNotice: View {
     @EnvironmentObject private var model: RemoteModel
     var body: some View {
         if !model.ready {
-            Button { model.selectedTab = 3 } label: { Label(model.connected ? "请打开 Chrome 并连接扩展" : "连接电脑，开始遥控", systemImage: "wifi.exclamationmark").font(.subheadline).frame(maxWidth: .infinity, alignment: .leading).padding(14).background(Color.biliPink.opacity(0.08), in: RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
+            Button { model.selectedTab = .devices } label: { Label(model.connected ? "请打开 Chrome 并连接扩展" : "连接电脑，开始遥控", systemImage: "wifi.exclamationmark").font(.subheadline).frame(maxWidth: .infinity, alignment: .leading).padding(14).background(Color.biliPink.opacity(0.08), in: RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
         }
     }
 }

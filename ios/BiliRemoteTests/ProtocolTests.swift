@@ -31,6 +31,21 @@ final class ProtocolTests: XCTestCase {
         queue.items.append(VideoItem(bvid: "BV2", title: "第二条", url: "https://www.bilibili.com/video/BV2/"))
         XCTAssertTrue(queue.isPlaylist(for: player))
     }
+    func testHomeFeedDecodingAndPlaybackItem() throws {
+        // Decode through JSONValue, as RemoteTransport does, so numbers take the same path.
+        let data = Data(#"{"loggedIn":true,"accountName":"账号","page":2,"nextPage":3,"items":[{"bvid":"BV1a","title":"推荐","url":"https://www.bilibili.com/video/BV1a/","cover":"https://i2.hdslb.com/bfs/archive/cover.jpg","duration":394,"creatorId":"42","creatorName":"UP","views":10328558,"danmaku":16222,"publishedAt":1787386562,"reason":"已关注"},{"bvid":"BV1b","title":"通用推荐","url":"https://www.bilibili.com/video/BV1b/"}]}"#.utf8)
+        let feed = try JSONDecoder().decode(JSONValue.self, from: data).decode(HomeFeed.self)
+        XCTAssertEqual(feed.items.map(\.bvid), ["BV1a", "BV1b"])
+        XCTAssertEqual(feed.items[0].views, 10328558)
+        XCTAssertEqual(feed.items[0].publishedAt, 1787386562)
+        XCTAssertEqual(feed.items[0].reason, "已关注")
+        XCTAssertNil(feed.items[1].views)
+        XCTAssertEqual(feed.nextPage, 3)
+        XCTAssertEqual(feed.items[0].video, VideoItem(bvid: "BV1a", title: "推荐", url: "https://www.bilibili.com/video/BV1a/", cover: "https://i2.hdslb.com/bfs/archive/cover.jpg", duration: 394, creatorId: "42", creatorName: "UP"))
+        let signedOut = try JSONDecoder().decode(HomeFeed.self, from: Data(#"{"loggedIn":false,"page":1,"nextPage":2,"items":[]}"#.utf8))
+        XCTAssertFalse(signedOut.loggedIn)
+        XCTAssertNil(signedOut.accountName)
+    }
     func testExactTimeParsing() throws {
         XCTAssertEqual(try Timecode.parse("12:30"), 750)
         XCTAssertEqual(try Timecode.parse("1:02:03"), 3723)

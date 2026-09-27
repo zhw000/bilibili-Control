@@ -1,5 +1,6 @@
 import {bounded,numericId,PageResult,RemoteError,Request,urlAllowed} from './types';
 import {community,relatedCovers} from './community';
+import {homeFeed} from './feed';
 import {videoLocation} from './player-dom';
 
 const HOST='com.biliremote.bridge';
@@ -83,6 +84,7 @@ async function handle(req:Request):Promise<unknown>{
       return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/upload/video?${query}`,'videos',Math.floor(bounded(p.page??1,1,10000)),p.order==='oldest'?'oldest':'newest'));
     }
     case 'creator.profile':case 'favorites.folders':case 'favorites.videos':case 'comments.list':case 'comments.add':return community(req.method,p);
+    case 'home.feed':return homeFeed(p);
     case 'creator.collections':return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/lists`,'collections',Math.floor(bounded(p.page??1,1,10000))));
     case 'collection.videos':return serializedCatalog(async()=>catalog(await collectionUrl(String(p.url??'')),'videos',Math.floor(bounded(p.page??1,1,10000))));
     case 'player.open':return openVideo(p);

@@ -78,7 +78,7 @@ var related = await phone.Request("player.related", new { bvid = beforeRelated.B
 Check(related.Flag("ok") && related.GetProperty("result").GetProperty("items").GetArrayLength() == 1 && browser.State == beforeRelated, "related videos roundtrip leaves playback unchanged");
 var selection = await phone.Request("queue.select", new { bvid = "BV1test" });
 Check(selection.Flag("ok") && server.Queue.Snapshot.Index == 0 && server.Queue.Snapshot.Items.Count == 3 && server.Queue.Snapshot.Source?.Kind == "creator", "inline selection preserves creator playlist");
-foreach (var method in new[] { "creator.profile", "favorites.folders", "comments.list" })
+foreach (var method in new[] { "creator.profile", "favorites.folders", "comments.list", "home.feed" })
 {
     var before = browser.State;
     var result = await phone.Request(method, new { creatorId = "123", bvid = before.Bvid });
@@ -183,7 +183,7 @@ sealed class BrowserFixture : IDisposable
                             result = State; break;
                         case "player.related":
                             result = new { bvid = State.Bvid, items = new[] { new VideoItem("BVRelated", "Related", "https://www.bilibili.com/video/BVRelated/") } }; break;
-                        case "creator.profile": case "favorites.folders": case "comments.list": result = new { method = request.Method }; break;
+                        case "creator.profile": case "favorites.folders": case "comments.list": case "home.feed": result = new { method = request.Method }; break;
                         case "comments.add": CommentSubmissions++; result = new { message = "Fixture only" }; break;
                         default: result = State; break;
                     }

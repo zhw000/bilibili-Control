@@ -11,6 +11,28 @@ struct FavoriteFolder: Codable, Identifiable {
     let count: Int
 }
 struct FavoriteFolders: Decodable { let accountName: String; let items: [FavoriteFolder] }
+struct FeedVideo: Codable, Identifiable, Hashable {
+    let bvid: String
+    let title: String
+    let url: String
+    var cover: String?
+    var duration: Double?
+    var creatorId: String?
+    var creatorName: String?
+    var views: Int?
+    var danmaku: Int?
+    var publishedAt: Double?
+    var reason: String?
+    var id: String { bvid }
+    var video: VideoItem { VideoItem(bvid: bvid, title: title, url: url, cover: cover, duration: duration, creatorId: creatorId, creatorName: creatorName) }
+}
+struct HomeFeed: Decodable {
+    let loggedIn: Bool
+    let accountName: String?
+    let items: [FeedVideo]
+    let page: Int
+    let nextPage: Int?
+}
 struct CommentItem: Codable, Identifiable {
     let id: String, creatorId: String, creatorName: String
     let avatar: String?

@@ -13,6 +13,27 @@ final class ScreenTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["我的收藏"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["连接电脑，开始遥控"].exists)
         capture(app, "10-favorites-disconnected")
+        app.tabBars.buttons["首页"].tap()
+        XCTAssertTrue(app.navigationBars["首页"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["连接电脑，开始遥控"].exists)
+        capture(app, "12-home-disconnected")
+    }
+    @MainActor func testHomeFeedShowsRecommendationGrid() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--preview-state"]; app.launch()
+        XCTAssertTrue(app.staticTexts["playerTitle"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["首页"].tap()
+        XCTAssertTrue(app.navigationBars["首页"].waitForExistence(timeout: 5))
+        let first = app.buttons["feedItem-BVHome1"], second = app.buttons["feedItem-BVHome2"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        XCTAssertTrue(second.exists)
+        XCTAssertEqual(first.frame.minY, second.frame.minY, accuracy: 1, "Recommendations form a two-column grid on phones")
+        XCTAssertLessThan(first.frame.maxX, second.frame.minX)
+        XCTAssertGreaterThanOrEqual(first.frame.minX, app.frame.minX + 8)
+        XCTAssertLessThanOrEqual(second.frame.maxX, app.frame.maxX - 8)
+        XCTAssertTrue(app.staticTexts["界面测试 的首页推荐"].exists)
+        capture(app, "13-home-feed")
+        scrollTo(app.buttons["feedItem-BVHome12"], in: app)
+        capture(app, "14-home-feed-bottom")
     }
     @MainActor func testPlaybackLayoutWithTestState() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--preview-state"]; app.launch()

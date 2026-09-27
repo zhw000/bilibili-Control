@@ -123,7 +123,7 @@ public sealed class RemoteServer:IDisposable
             case "tabs.select":await Queue.Stop("已切换控制标签页");var selected=await bridge.Call(request.Method,p);player=Wire.Decode<PlayerState>(selected);Publish();return selected;
             case "player.command":{var result=await bridge.Call(request.Method,p);player=Wire.Decode<PlayerState>(result);Queue.Observe(player);Publish();return result;}
             case "tabs.list":case "search":case "creator.videos":case "creator.collections":case "collection.videos":case "player.related":
-            case "creator.profile":case "favorites.folders":case "favorites.videos":case "comments.list":case "comments.add":return await bridge.Call(request.Method,p);
+            case "creator.profile":case "favorites.folders":case "favorites.videos":case "comments.list":case "comments.add":case "home.feed":return await bridge.Call(request.Method,p);
             default:throw new RemoteException("unknown_method","不支持的操作");
         }
     }
