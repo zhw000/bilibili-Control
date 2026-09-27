@@ -17,3 +17,11 @@ export function danmakuOn(root:ParentNode=document):boolean {
 export function isWebFullscreen(root:ParentNode=document):boolean {
   return root.querySelector('.bpx-player-container')?.getAttribute('data-screen')==='web'||!!root.querySelector('#biliremote-fullscreen');
 }
+// “自动开播” controls opening a video, not advancing a queue. Never change it.
+export function autoNextControl(root:ParentNode=document):HTMLInputElement|null {
+  return root.querySelector<HTMLInputElement>('.next-play input[type="checkbox"],.auto-play input[type="checkbox"],.video-pod__auto-play input[type="checkbox"]');
+}
+export function videoLocation(url:string=location.href):{bvid:string;part:number}{
+  const current=new URL(url),part=Number(current.searchParams.get('p'));
+  return {bvid:current.pathname.match(/\/video\/(BV[0-9A-Za-z]+)/)?.[1]??'',part:Number.isInteger(part)&&part>0?part:1};
+}

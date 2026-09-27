@@ -1,22 +1,23 @@
 import {bounded,numericId,PageResult,RemoteError,Request,urlAllowed} from './types';
 import {community,relatedCovers} from './community';
+import {videoLocation} from './player-dom';
 
 const HOST='com.biliremote.bridge';
 let port:chrome.runtime.Port|undefined,targetId:number|undefined,catalogId:number|undefined,managed=false;
 let currentBinding:Record<string,unknown>|undefined;
-let originalAutoplay:boolean|undefined;
+let originalAutoNext:boolean|undefined;
 let catalogSerial:Promise<unknown>=Promise.resolve();
 const collectionRoutes=new Map<string,string>();
-const windowStates=new Map<number,NonNullable<chrome.windows.UpdateInfo['state']>>();
-const initialized=chrome.storage.session.get(['targetId','catalogId','managed','binding','originalAutoplay']).then(saved=>{targetId=typeof saved.targetId==='number'?saved.targetId:undefined;catalogId=typeof saved.catalogId==='number'?saved.catalogId:undefined;managed=saved.managed===true;currentBinding=saved.binding&&typeof saved.binding==='object'?saved.binding as Record<string,unknown>:undefined;originalAutoplay=typeof saved.originalAutoplay==='boolean'?saved.originalAutoplay:undefined});
-async function remember(){await chrome.storage.session.set({targetId:targetId??null,catalogId:catalogId??null,managed,binding:currentBinding??null,originalAutoplay:originalAutoplay??null})}
-function bindingParams(){return {...currentBinding,originalAutoplay}}
+// Do not reuse the old originalAutoplay value: it could describe “自动开播”.
+const initialized=chrome.storage.session.get(['targetId','catalogId','managed','binding','originalAutoNext']).then(saved=>{targetId=typeof saved.targetId==='number'?saved.targetId:undefined;catalogId=typeof saved.catalogId==='number'?saved.catalogId:undefined;managed=saved.managed===true;currentBinding=saved.binding&&typeof saved.binding==='object'?saved.binding as Record<string,unknown>:undefined;originalAutoNext=typeof saved.originalAutoNext==='boolean'?saved.originalAutoNext:undefined});
+async function remember(){await chrome.storage.session.set({targetId:targetId??null,catalogId:catalogId??null,managed,binding:currentBinding??null,originalAutoNext:originalAutoNext??null})}
+function bindingParams(){return {...currentBinding,originalAutoNext}}
 function send(event:string,data:unknown){try{port?.postMessage({v:1,event,data})}catch{}}
 async function releaseDisconnectedSession(){
   await initialized;
   managed=false;currentBinding=undefined;
   if(targetId&&await tabExists(targetId))await content(targetId,'player.manage',{enabled:false});
-  originalAutoplay=undefined;await remember();
+  originalAutoNext=undefined;await remember();
 }
 function connect(){
   if(port)return;
@@ -65,15 +66,16 @@ async function openVideo(params:Record<string,unknown>){
   const video=params.video as {url?:string;bvid?:string}|undefined;
   if(!video?.url||!urlAllowed(video.url)||!/^BV[0-9A-Za-z]+$/.test(video.bvid??''))throw new RemoteError('invalid_video','视频地址无效');
   const url=new URL(`https://www.bilibili.com/video/${video.bvid}/`);url.searchParams.set('p',String(Math.floor(bounded(params.part??1,1,10000))));
-  const id=await target();currentBinding={playbackId:params.playbackId,bvid:video.bvid,managed,time:params.time??0};await remember();
+  const id=await target();currentBinding={playbackId:params.playbackId,bvid:video.bvid,part:Number(url.searchParams.get('p')),managed,time:params.time??0};const openedBinding=currentBinding;await remember();
   await navigation(id,url.href);
-  return content(id,'player.bind',bindingParams());
+  if(targetId!==id||currentBinding!==openedBinding)throw new RemoteError('target_changed','电脑上已切换视频');
+  return content(id,'player.bind',{...openedBinding,originalAutoNext});
 }
 async function handle(req:Request):Promise<unknown>{
   await initialized;if(req.v!==1||!req.id)throw new RemoteError('version_mismatch','协议版本不匹配');const p=req.params??{};
   switch(req.method){
     case 'tabs.list':return (await chrome.tabs.query({url:['https://www.bilibili.com/*']})).filter(t=>t.id!==catalogId).map(t=>({id:t.id,title:t.title??'哔哩哔哩',url:t.url,selected:t.id===targetId}));
-    case 'tabs.select':{const id=bounded(p.tabId,0,Number.MAX_SAFE_INTEGER);if(!await tabExists(id)||id===catalogId)throw new RemoteError('invalid_tab','这个标签页已经关闭或不属于哔哩哔哩');if(targetId&&await tabExists(targetId))await content(targetId,'player.manage',{enabled:false});targetId=id;currentBinding=undefined;managed=false;await remember();return content(id,'player.state')}
+    case 'tabs.select':{const id=bounded(p.tabId,0,Number.MAX_SAFE_INTEGER);if(!await tabExists(id)||id===catalogId)throw new RemoteError('invalid_tab','这个标签页已经关闭或不属于哔哩哔哩');if(targetId&&await tabExists(targetId))await content(targetId,'player.manage',{enabled:false});targetId=id;currentBinding=undefined;managed=false;originalAutoNext=undefined;await remember();return content(id,'player.state')}
     case 'search':{const query=String(p.query??'').trim();if(!query||query.length>200)throw new RemoteError('invalid_request','搜索词必须为 1～200 字');const kind=p.kind==='creators'?'creators':'videos';const url=`https://search.bilibili.com/${kind==='creators'?'upuser':'video'}?keyword=${encodeURIComponent(query)}`;return serializedCatalog(()=>catalog(url,kind,Math.floor(bounded(p.page??1,1,10000))))}
     case 'creator.videos':{
       const keyword=String(p.keyword??'').trim();if(keyword.length>100)throw new RemoteError('invalid_request','搜索词不能超过 100 字');
@@ -95,7 +97,14 @@ async function handle(req:Request):Promise<unknown>{
       if((await content(id,'player.state')).bvid!==p.bvid)throw new RemoteError('target_changed','电脑已切换视频，请刷新相关视频');
       return result;
     }
-    case 'player.manage':{managed=Boolean(p.enabled);if(currentBinding)currentBinding.managed=managed;const result=targetId&&await tabExists(targetId)?await content(targetId,'player.manage',{enabled:managed}):{};if(!managed)originalAutoplay=undefined;await remember();return result;}
+    case 'player.manage':{
+      managed=Boolean(p.enabled);
+      if(currentBinding)currentBinding.managed=managed;
+      if(!managed)currentBinding=undefined;
+      const result=(!managed||currentBinding)&&targetId&&await tabExists(targetId)?await content(targetId,'player.manage',{enabled:managed}):{};
+      if(!managed)originalAutoNext=undefined;
+      await remember();return result;
+    }
     case 'player.state':return targetId&&await tabExists(targetId)?content(targetId,'player.state'):{};
     case 'player.command':{
       if(p.action==='quality'){
@@ -105,11 +114,8 @@ async function handle(req:Request):Promise<unknown>{
         if(id!==targetId)throw new RemoteError('target_changed','控制标签页已切换，请重新选择清晰度');
         return result;
       }
-      const id=await target();if(p.action==='fullscreen'){
-        const tab=await chrome.tabs.get(id),win=await chrome.windows.get(tab.windowId);const enabled=Boolean(p.value);
-        if(enabled&&!windowStates.has(win.id!))windowStates.set(win.id!,win.state??'normal');
-        const result=await content(id,'player.command',p);await chrome.windows.update(win.id!,{state:enabled?'fullscreen':windowStates.get(win.id!)??'normal'});if(!enabled)windowStates.delete(win.id!);return result;
-      }return content(id,'player.command',p);
+      // A single website fullscreen layer keeps the browser's tabs and exit UI usable.
+      return content(await target(),'player.command',p);
     }
     default:throw new RemoteError('unknown_method',`不支持的方法：${req.method}`);
   }
@@ -117,17 +123,23 @@ async function handle(req:Request):Promise<unknown>{
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message.popup){if(message.popup==='connect')connect();respond({connected:!!port,targetId});return}
   if(sender.tab?.id!==targetId)return;
-  if(message.event==='player.autoplayCaptured'){if(managed&&originalAutoplay===undefined&&typeof message.data?.value==='boolean'){originalAutoplay=message.data.value;void remember()}return;}
+  if(message.event==='player.autoNextCaptured'){if(managed&&currentBinding&&originalAutoNext===undefined&&typeof message.data?.value==='boolean'){originalAutoNext=message.data.value;void remember()}return;}
   if(message.event==='content.ready'){if(currentBinding)void content(targetId!,'player.attach',bindingParams()).catch(()=>{});return;}
   if(message.event==='player.partEnded'&&managed&&currentBinding&&message.data?.playbackId===currentBinding.playbackId){
     const state=message.data;openVideo({video:{url:state.url,bvid:state.bvid},part:state.part+1,time:0,playbackId:state.playbackId}).catch(error=>send('player.error',{...state,errorCode:error.code??'player_error',errorMessage:error.message}));return;
   }
   if(['player.changed','player.ended','player.error'].includes(message.event))send(message.event,message.data);
 });
-chrome.tabs.onRemoved.addListener(id=>{if(id===targetId){targetId=undefined;currentBinding=undefined;managed=false;send('target.closed',{});void remember()}if(id===catalogId){catalogId=undefined;void remember()}});
+chrome.tabs.onRemoved.addListener(id=>{if(id===targetId){targetId=undefined;currentBinding=undefined;managed=false;originalAutoNext=undefined;send('target.closed',{});void remember()}if(id===catalogId){catalogId=undefined;void remember()}});
 chrome.tabs.onUpdated.addListener((id,change)=>{
   if(id!==targetId||!currentBinding)return;
-  if(change.url&&change.url.match(/\/video\/(BV[0-9A-Za-z]+)/)?.[1]!==currentBinding.bvid){currentBinding=undefined;managed=false;void remember();send('target.navigated',{});return;}
+  if(change.url){
+    const current=videoLocation(change.url);
+    if(current.bvid!==currentBinding.bvid||current.part!==(currentBinding.part??1)){
+      currentBinding=undefined;managed=false;originalAutoNext=undefined;
+      void content(id,'player.manage',{enabled:false}).catch(()=>{});void remember();send('target.navigated',{});return;
+    }
+  }
   if(change.status==='complete')void content(id,'player.attach',bindingParams()).catch(()=>{});
 });
 chrome.runtime.onInstalled.addListener(()=>{connect();void chrome.alarms.create('reconnect',{periodInMinutes:.5})});
