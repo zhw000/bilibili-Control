@@ -93,23 +93,30 @@ private struct FeedCard: View {
                 if let id = video.creatorId, let name = video.creatorName, !name.isEmpty {
                     NavigationLink { CreatorView(creator: CreatorItem(id: id, name: name, url: "https://space.bilibili.com/\(id)")) } label: { Text(name).lineLimit(1) }.buttonStyle(.plain)
                 }
-                if let publishedAt = video.publishedAt { Text("· \(Date(timeIntervalSince1970: publishedAt).formatted(.relative(presentation: .named)))").lineLimit(1) }
+                if let publishedAt = video.publishedAt { Text("· \(Date(timeIntervalSince1970: publishedAt).formatted(.relative(presentation: .named)))").lineLimit(1).layoutPriority(1) }
             }.font(.caption).foregroundStyle(.secondary)
         }
     }
     private var stats: some View {
-        HStack(spacing: 8) {
-            if let views = video.views { stat("play.rectangle", views) }
-            if let danmaku = video.danmaku { stat("text.bubble", danmaku) }
-            Spacer(minLength: 4)
-            if let duration = video.duration { Text(Timecode.format(duration)) }
+        // Narrow columns drop the danmaku count rather than truncating the view count.
+        ViewThatFits(in: .horizontal) {
+            statsRow(danmaku: video.danmaku)
+            statsRow(danmaku: nil)
         }
         .font(.caption2.monospacedDigit()).foregroundStyle(.white).lineLimit(1)
         .padding(.horizontal, 7).padding(.top, 14).padding(.bottom, 5)
         .background(LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .top, endPoint: .bottom))
     }
+    private func statsRow(danmaku: Int?) -> some View {
+        HStack(spacing: 8) {
+            if let views = video.views { stat("play.rectangle", views) }
+            if let danmaku { stat("text.bubble", danmaku) }
+            Spacer(minLength: 4)
+            if let duration = video.duration { Text(Timecode.format(duration)).layoutPriority(1) }
+        }
+    }
     private func stat(_ icon: String, _ count: Int) -> some View {
-        HStack(spacing: 2) { Image(systemName: icon); Text(count.formatted(.number.notation(.compactName))) }
+        HStack(spacing: 2) { Image(systemName: icon); Text(count.formatted(.number.notation(.compactName))) }.layoutPriority(1)
     }
 }
 
