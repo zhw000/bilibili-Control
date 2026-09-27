@@ -98,25 +98,26 @@ private struct FeedCard: View {
         }
     }
     private var stats: some View {
-        // Narrow columns drop the danmaku count rather than truncating the view count.
+        // Numbers keep their natural width; narrow cards drop the danmaku count, then the view count.
         ViewThatFits(in: .horizontal) {
-            statsRow(danmaku: video.danmaku)
-            statsRow(danmaku: nil)
+            statsRow(views: video.views, danmaku: video.danmaku)
+            statsRow(views: video.views, danmaku: nil)
+            statsRow(views: nil, danmaku: nil)
         }
         .font(.caption2.monospacedDigit()).foregroundStyle(.white).lineLimit(1)
         .padding(.horizontal, 7).padding(.top, 14).padding(.bottom, 5)
         .background(LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .top, endPoint: .bottom))
     }
-    private func statsRow(danmaku: Int?) -> some View {
+    private func statsRow(views: Int?, danmaku: Int?) -> some View {
         HStack(spacing: 8) {
-            if let views = video.views { stat("play.rectangle", views) }
+            if let views { stat("play.rectangle", views) }
             if let danmaku { stat("text.bubble", danmaku) }
             Spacer(minLength: 4)
-            if let duration = video.duration { Text(Timecode.format(duration)).layoutPriority(1) }
+            if let duration = video.duration { Text(Timecode.format(duration)).fixedSize() }
         }
     }
     private func stat(_ icon: String, _ count: Int) -> some View {
-        HStack(spacing: 2) { Image(systemName: icon); Text(count.formatted(.number.notation(.compactName))) }.layoutPriority(1)
+        HStack(spacing: 2) { Image(systemName: icon); Text(count.formatted(.number.notation(.compactName))) }.fixedSize()
     }
 }
 
