@@ -8,7 +8,7 @@ import {readQuality,switchQuality} from './quality';
 let managed=false,playbackId:string|undefined,endedSent=false,lastError='';
 let previousAutoNext:boolean|undefined;
 let binding:Record<string,unknown>|undefined;
-let qualitySwitching=false;
+let qualitySwitching=false,fullscreenShown=false;
 let disposed=false,reportTimer:ReturnType<typeof setInterval>|undefined;
 let removeFullscreenListeners=()=>{};
 const pageListeners=new AbortController();
@@ -91,7 +91,7 @@ async function bind(params:Record<string,unknown>){
 }
 async function command(params:Record<string,unknown>){
   requireRuntime();
-  const action=String(params.action);if(action==='fullscreen'){await setPlayerFullscreen(Boolean(params.value),runtimeActive);emit('player.changed',snapshot());return snapshot()}
+  const action=String(params.action);if(action==='fullscreen'){await setPlayerFullscreen(Boolean(params.value),runtimeActive,params.wait===true?10000:0);fullscreenShown=isPlayerFullscreen();emit('player.changed',snapshot());return snapshot()}
   const v=video();if(!v)throw new RemoteError('no_player','请先选择一个视频');
   switch(action){
     case 'quality':{
@@ -129,6 +129,8 @@ function report(){
   if(!runtimeActive())return;
   releaseManualNavigation();
   if(location.hostname!=='www.bilibili.com'||!location.pathname.startsWith('/video/'))return;
+  // Leaving the player fullscreen here (Escape, the site's button) must also end the browser window fullscreen.
+  const fullscreen=isPlayerFullscreen();if(fullscreenShown&&!fullscreen)emit('player.fullscreenExited');fullscreenShown=fullscreen;
   const v=video();if(v){if(managed)manage(true);emit('player.changed',snapshot());if(!v.ended)endedSent=false}
   const error=document.querySelector('.error-panel,.bpx-player-error-message,.error-container')?.textContent?.trim()??'';
   if(error&&error!==lastError){lastError=error;const unavailable=/不存在|已删除|失效|不见了|被删除/.test(error);emit('player.error',{...snapshot(),errorCode:unavailable?'video_unavailable':/登录|验证/.test(error)?'verification_required':'player_error',errorMessage:error.slice(0,200)})}

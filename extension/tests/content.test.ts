@@ -15,6 +15,8 @@ beforeEach(async()=>{
     const add=target.addEventListener.bind(target);
     vi.spyOn(target,'addEventListener').mockImplementation((type:any,listener:any,options:any)=>{add(type,listener,options);listeners.push(()=>target.removeEventListener(type,listener,options))});
   }
+  const observe=MutationObserver.prototype.observe;
+  vi.spyOn(MutationObserver.prototype,'observe').mockImplementation(function(this:MutationObserver,target:Node,options?:MutationObserverInit){observe.call(this,target,options);listeners.push(()=>this.disconnect())});
   emit=vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal('chrome',{runtime:{id:'test-extension',sendMessage:emit,onMessage:{addListener:vi.fn(listener=>receive=listener),removeListener:vi.fn()}}});
   await import('../src/content');
@@ -62,6 +64,26 @@ it('still advances a queue exactly once through the captured end event',async()=
   await request('player.attach',binding);const v=document.querySelector('video')!,site=vi.fn();v.addEventListener('ended',site);
   v.dispatchEvent(new Event('ended'));v.dispatchEvent(new Event('ended'));
   expect(site).not.toHaveBeenCalled();expect(emit.mock.calls.filter(([event])=>event.event==='player.ended')).toHaveLength(1);
+});
+it('reports leaving the player fullscreen on the computer at once and exactly once',async()=>{
+  const player=document.querySelector('.bpx-player-container')!;
+  player.insertAdjacentHTML('beforeend','<button class="bpx-player-ctrl-web"></button>');
+  player.querySelector('.bpx-player-ctrl-web')!.addEventListener('click',()=>player.setAttribute('data-screen',player.getAttribute('data-screen')==='web'?'normal':'web'));
+  expect((await request('player.command',{action:'fullscreen',value:true})).result.fullscreen).toBe(true);
+  await vi.advanceTimersByTimeAsync(1000);emit.mockClear();
+  player.setAttribute('data-screen','normal');await vi.advanceTimersByTimeAsync(0);
+  const exits=()=>emit.mock.calls.filter(([message])=>message.event==='player.fullscreenExited').length;
+  expect(exits()).toBe(1);
+  await vi.advanceTimersByTimeAsync(3000);expect(exits()).toBe(1);
+});
+it('waits for the player controls when fullscreen is restored on a freshly loaded page',async()=>{
+  const player=document.querySelector('.bpx-player-container')!;
+  const reply=request('player.command',{action:'fullscreen',value:true,wait:true});
+  await vi.advanceTimersByTimeAsync(600);
+  player.insertAdjacentHTML('beforeend','<button class="bpx-player-ctrl-web"></button>');
+  player.querySelector('.bpx-player-ctrl-web')!.addEventListener('click',()=>player.setAttribute('data-screen','web'));
+  await vi.advanceTimersByTimeAsync(400);
+  expect((await reply).result.fullscreen).toBe(true);
 });
 it('abandons a pending remote play when the user changes videos during loading',async()=>{
   const result=request('player.bind',binding);history.replaceState({},'','/video/BV2/');

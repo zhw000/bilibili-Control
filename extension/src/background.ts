@@ -7,11 +7,13 @@ const HOST='com.biliremote.bridge';
 let port:chrome.runtime.Port|undefined,targetId:number|undefined,catalogId:number|undefined,managed=false;
 let currentBinding:Record<string,unknown>|undefined;
 let originalAutoNext:boolean|undefined;
+// The browser window this extension made fullscreen, and the state to restore afterwards.
+let fullscreenWindow:{id:number;state:NonNullable<chrome.windows.UpdateInfo['state']>}|undefined;
 let catalogSerial:Promise<unknown>=Promise.resolve();
 const collectionRoutes=new Map<string,string>();
 // Do not reuse the old originalAutoplay value: it could describe “自动开播”.
-const initialized=chrome.storage.session.get(['targetId','catalogId','managed','binding','originalAutoNext']).then(saved=>{targetId=typeof saved.targetId==='number'?saved.targetId:undefined;catalogId=typeof saved.catalogId==='number'?saved.catalogId:undefined;managed=saved.managed===true;currentBinding=saved.binding&&typeof saved.binding==='object'?saved.binding as Record<string,unknown>:undefined;originalAutoNext=typeof saved.originalAutoNext==='boolean'?saved.originalAutoNext:undefined});
-async function remember(){await chrome.storage.session.set({targetId:targetId??null,catalogId:catalogId??null,managed,binding:currentBinding??null,originalAutoNext:originalAutoNext??null})}
+const initialized=chrome.storage.session.get(['targetId','catalogId','managed','binding','originalAutoNext','fullscreenWindow']).then(saved=>{targetId=typeof saved.targetId==='number'?saved.targetId:undefined;catalogId=typeof saved.catalogId==='number'?saved.catalogId:undefined;managed=saved.managed===true;currentBinding=saved.binding&&typeof saved.binding==='object'?saved.binding as Record<string,unknown>:undefined;originalAutoNext=typeof saved.originalAutoNext==='boolean'?saved.originalAutoNext:undefined;const savedWindow=saved.fullscreenWindow as typeof fullscreenWindow|null;fullscreenWindow=typeof savedWindow?.id==='number'&&typeof savedWindow.state==='string'?savedWindow:undefined});
+async function remember(){await chrome.storage.session.set({targetId:targetId??null,catalogId:catalogId??null,managed,binding:currentBinding??null,originalAutoNext:originalAutoNext??null,fullscreenWindow:fullscreenWindow??null})}
 function bindingParams(){return {...currentBinding,originalAutoNext}}
 function send(event:string,data:unknown){try{port?.postMessage({v:1,event,data})}catch{}}
 async function releaseDisconnectedSession(){
@@ -37,6 +39,26 @@ async function navigation(id:number,url:string){
   throw new RemoteError('navigation_timeout','网页加载超时，请检查电脑网络');
 }
 async function target(){await initialized;if(!await tabExists(targetId)){const tab=await chrome.tabs.create({url:'https://www.bilibili.com/',active:true});targetId=tab.id;await remember()}return targetId!}
+// Remote fullscreen is the site's web fullscreen inside a fullscreen browser window (no tabs or
+// address bar). Both are entered and left together so no browser fullscreen is left behind.
+async function enterWindowFullscreen(tabId:number){
+  const win=await chrome.windows.get((await chrome.tabs.get(tabId)).windowId);
+  if(fullscreenWindow&&fullscreenWindow.id!==win.id)await leaveWindowFullscreen();
+  if(!fullscreenWindow){fullscreenWindow={id:win.id!,state:win.state??'normal'};await remember()}
+  if(win.state!=='fullscreen')await chrome.windows.update(win.id!,{state:'fullscreen'});
+}
+async function leaveWindowFullscreen(){
+  const saved=fullscreenWindow;if(!saved)return;
+  fullscreenWindow=undefined;await remember();
+  // A window the user had already made fullscreen stays that way.
+  if(saved.state==='fullscreen')return;
+  try{if((await chrome.windows.get(saved.id)).state==='fullscreen')await chrome.windows.update(saved.id,{state:saved.state})}catch{/* The window was closed. */}
+}
+// A newly loaded page (next queue item, reload) starts outside web fullscreen: restore it, or give the window back.
+async function resumeFullscreen(id:number){
+  try{await content(id,'player.command',{action:'fullscreen',value:true,wait:true})}
+  catch{if(id===targetId)await leaveWindowFullscreen()}
+}
 async function catalog(url:string,kind:string,page:number,order:string='newest'):Promise<PageResult<unknown>>{
   if(!urlAllowed(url))throw new RemoteError('invalid_url','只能读取哔哩哔哩网页');
   if(!await tabExists(catalogId)){const tab=await chrome.tabs.create({url:'https://www.bilibili.com/',active:false});catalogId=tab.id;await chrome.tabs.update(catalogId!,{muted:true,autoDiscardable:false});await remember()}
@@ -76,7 +98,7 @@ async function handle(req:Request):Promise<unknown>{
   await initialized;if(req.v!==1||!req.id)throw new RemoteError('version_mismatch','协议版本不匹配');const p=req.params??{};
   switch(req.method){
     case 'tabs.list':return (await chrome.tabs.query({url:['https://www.bilibili.com/*']})).filter(t=>t.id!==catalogId).map(t=>({id:t.id,title:t.title??'哔哩哔哩',url:t.url,selected:t.id===targetId}));
-    case 'tabs.select':{const id=bounded(p.tabId,0,Number.MAX_SAFE_INTEGER);if(!await tabExists(id)||id===catalogId)throw new RemoteError('invalid_tab','这个标签页已经关闭或不属于哔哩哔哩');if(targetId&&await tabExists(targetId))await content(targetId,'player.manage',{enabled:false});targetId=id;currentBinding=undefined;managed=false;originalAutoNext=undefined;await remember();return content(id,'player.state')}
+    case 'tabs.select':{const id=bounded(p.tabId,0,Number.MAX_SAFE_INTEGER);if(!await tabExists(id)||id===catalogId)throw new RemoteError('invalid_tab','这个标签页已经关闭或不属于哔哩哔哩');await leaveWindowFullscreen();if(targetId&&await tabExists(targetId))await content(targetId,'player.manage',{enabled:false});targetId=id;currentBinding=undefined;managed=false;originalAutoNext=undefined;await remember();return content(id,'player.state')}
     case 'search':{const query=String(p.query??'').trim();if(!query||query.length>200)throw new RemoteError('invalid_request','搜索词必须为 1～200 字');const kind=p.kind==='creators'?'creators':'videos';const url=`https://search.bilibili.com/${kind==='creators'?'upuser':'video'}?keyword=${encodeURIComponent(query)}`;return serializedCatalog(()=>catalog(url,kind,Math.floor(bounded(p.page??1,1,10000))))}
     case 'creator.videos':{
       const keyword=String(p.keyword??'').trim();if(keyword.length>100)throw new RemoteError('invalid_request','搜索词不能超过 100 字');
@@ -116,8 +138,13 @@ async function handle(req:Request):Promise<unknown>{
         if(id!==targetId)throw new RemoteError('target_changed','控制标签页已切换，请重新选择清晰度');
         return result;
       }
-      // A single website fullscreen layer keeps the browser's tabs and exit UI usable.
-      return content(await target(),'player.command',p);
+      const id=await target();
+      if(p.action!=='fullscreen')return content(id,'player.command',p);
+      if(!p.value){try{return await content(id,'player.command',p)}finally{await leaveWindowFullscreen()}}
+      // Hide the browser's tabs and address bar only once the player has filled the page.
+      const result=await content(id,'player.command',p);
+      if(id!==targetId)throw new RemoteError('target_changed','控制标签页已切换，请重新全屏');
+      await enterWindowFullscreen(id);return result;
     }
     default:throw new RemoteError('unknown_method',`不支持的方法：${req.method}`);
   }
@@ -126,14 +153,19 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message.popup){if(message.popup==='connect')connect();respond({connected:!!port,targetId});return}
   if(sender.tab?.id!==targetId)return;
   if(message.event==='player.autoNextCaptured'){if(managed&&currentBinding&&originalAutoNext===undefined&&typeof message.data?.value==='boolean'){originalAutoNext=message.data.value;void remember()}return;}
-  if(message.event==='content.ready'){if(currentBinding)void content(targetId!,'player.attach',bindingParams()).catch(()=>{});return;}
+  if(message.event==='content.ready'){if(currentBinding)void content(targetId!,'player.attach',bindingParams()).catch(()=>{});if(fullscreenWindow)void resumeFullscreen(targetId!).catch(()=>{});return;}
+  if(message.event==='player.fullscreenExited'){void leaveWindowFullscreen().catch(()=>{});return;}
   if(message.event==='player.partEnded'&&managed&&currentBinding&&message.data?.playbackId===currentBinding.playbackId){
     const state=message.data;openVideo({video:{url:state.url,bvid:state.bvid},part:state.part+1,time:0,playbackId:state.playbackId}).catch(error=>send('player.error',{...state,errorCode:error.code??'player_error',errorMessage:error.message}));return;
   }
   if(['player.changed','player.ended','player.error'].includes(message.event))send(message.event,message.data);
 });
-chrome.tabs.onRemoved.addListener(id=>{if(id===targetId){targetId=undefined;currentBinding=undefined;managed=false;originalAutoNext=undefined;send('target.closed',{});void remember()}if(id===catalogId){catalogId=undefined;void remember()}});
+chrome.tabs.onRemoved.addListener(id=>{if(id===targetId){targetId=undefined;currentBinding=undefined;managed=false;originalAutoNext=undefined;send('target.closed',{});void remember();void leaveWindowFullscreen().catch(()=>{})}if(id===catalogId){catalogId=undefined;void remember()}});
+// Switching to another tab in the fullscreen window gives the window back.
+chrome.tabs.onActivated.addListener(({tabId,windowId})=>{if(fullscreenWindow?.id===windowId&&tabId!==targetId)void leaveWindowFullscreen().catch(()=>{})});
 chrome.tabs.onUpdated.addListener((id,change)=>{
+  // No content script runs on other sites to restore the player fullscreen there.
+  if(id===targetId&&change.url&&fullscreenWindow&&!urlAllowed(change.url))void leaveWindowFullscreen().catch(()=>{});
   if(id!==targetId||!currentBinding)return;
   if(change.url){
     const current=videoLocation(change.url);
