@@ -1,4 +1,4 @@
-#define AppVersion "0.5.0"
+#define AppVersion "0.6.0"
 [Setup]
 AppId={{D09A7BB9-AF35-49C9-9A6E-9E11B42C81CF}
 AppName=哔哩遥控
@@ -15,6 +15,7 @@ OutputBaseFilename=BiliRemote-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\desktop\BiliRemote.Host\Assets\AppIcon.ico
 UninstallDisplayIcon={app}\BiliRemote.exe
 CloseApplications=yes
 [Files]

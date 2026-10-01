@@ -27,10 +27,11 @@ The host sends a complete snapshot immediately after connecting and when state c
 | Method | Parameters | Result |
 |---|---|---|
 | `snapshot` | `{}` | Full state |
-| `search` | `query`, `kind: videos / creators`, `page` | Paged videos or creators |
+| `search` | `query`, `kind: videos / media / creators`, `page` | Paged videos, licensed seasons (collection shape), or creators |
 | `creator.videos` | `creatorId`, `order: newest / oldest / popular`, optional `keyword`, `page` | Paged videos |
 | `creator.profile` | `creatorId` | Creator identity, description, verified label, followers, following, videoCount, likes, level |
 | `creator.collections` | `creatorId`, `page` | Paged collections |
+| `season.episodes` | `url: https://www.bilibili.com/bangumi/play/ss<ID>`, `page` | Main-feature episodes |
 | `collection.videos` | `url`, `page` | Paged videos |
 | `favorites.folders` | `{}` | `{accountName,items:[{id,title,count}]}` for Chrome's logged-in account |
 | `favorites.videos` | `folderId`, optional `keyword`, `page` | Paged video favorites; unavailable items have `unavailableReason` |
@@ -42,7 +43,7 @@ The host sends a complete snapshot immediately after connecting and when state c
 | `player.open` | `video` | Replaces queue with this video |
 | `player.related` | `bvid` | `{bvid,items: VideoItem[]}` from the selected playback tab's recommendations; never navigates or changes playback |
 | `player.command` | `action`, optional `value` | Player state |
-| `queue.start` | `kind: manual / creator / collection / favorites`, optional `items / creatorId / url / folderId / keyword`, `order` | Queue snapshot |
+| `queue.start` | `kind: manual / creator / collection / favorites / season`, optional `items / creatorId / url / folderId / keyword`, `order`, `startBvid` | Queue snapshot |
 | `queue.previous / queue.next / queue.resume / queue.stop` | `{}` | Queue snapshot |
 | `queue.select` | `bvid` | Starts an already-loaded queue item, preserving source and pending pages; stale BVID returns `queue_changed` |
 | `system.volume` | `value: 0...1` | System volume |
@@ -61,6 +62,11 @@ The iOS playback page contains one vertical scroll view. Creator/collection or m
 ## Browser adaptation
 
 Search, creator videos and collections run serially in one inactive, muted catalog tab, separate from the fixed playback target. Those adapters read rendered page elements and pagination. Creator profiles, favorites and comments use fixed `api.bilibili.com` endpoints from the extension service worker with Chrome's session. The extension only reads the `bili_jct` cookie locally for a comment POST; browser cookies and CSRF values are never exported. No caller-controlled API URLs are accepted. Adapter failures are surfaced explicitly; they are not silently converted into empty successful results. Tests use DOM and API fixtures; logged-in website compatibility must be checked separately.
+
+Since 0.6.0, the v1 `bvid` string also carries `ep<digits>` for licensed episodes. It is the stable queue identity across search, playback state, selection and persistence; never substitute a season ID or an episode's underlying BV ID. EP items open their canonical `/bangumi/play/ep<ID>` URL and always have `part=partCount=1`; the host advances episodes. Licensed season results have `id=ss<ID>` and optional `description` with the visible category, update information and membership badge. Season queues are shown as playlists even for a single-episode movie.
+
+PGC search uses the website's `/pgc` results (movies, TV series and documentaries). Episode reads scroll the rendered virtual list in the inactive catalog tab, verify its displayed count, and fail explicitly if incomplete. Membership/trial and region restrictions suspend the queue instead of marking the episode deleted or skipping it. No account rights are bypassed.
+
 
 Version 0.5.0 adds `home.feed`, the recommendation feed of the desktop homepage (`/x/web-interface/wbi/index/top/feed/rcmd`). It is signed like the website: the two WBI key image names from `/x/web-interface/nav` (also returned to signed-out browsers) are mixed in the website's fixed order; parameters plus `wts` are sorted, stripped of `!'()*`, and hashed with MD5 into `w_rid`. Each request is one “换一换”: `fresh_idx`/`fresh_idx_1h` equal `page`, `brush` is `page - 1`, and 20 items are requested. Only ordinary videos (`goto=av` without business/ad data) are returned; `publishedAt` is Unix seconds and `reason` is the website's label such as “已关注” or “1万点赞”. A signed-out browser yields generic recommendations with `loggedIn=false`. Verification, HTTP and signing-format failures are errors, never an empty feed. Service-worker GET requests carry no page Origin or Referer; Bilibili rejects `chrome-extension://` values of those headers (412/403). The iPhone clears the grid on refresh, deduplicates by BVID, and loads the next batch when the last card appears.
 

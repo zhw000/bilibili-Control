@@ -1,4 +1,4 @@
-import {bounded,numericId,PageResult,RemoteError,Request,urlAllowed} from './types';
+import {bounded,contentId,numericId,PageResult,playbackUrl,RemoteError,Request,searchRoute,urlAllowed} from './types';
 import {community,relatedCovers} from './community';
 import {homeFeed} from './feed';
 import {videoLocation} from './player-dom';
@@ -87,9 +87,9 @@ async function collectionUrl(value:string):Promise<string>{
 }
 async function openVideo(params:Record<string,unknown>){
   const video=params.video as {url?:string;bvid?:string}|undefined;
-  if(!video?.url||!urlAllowed(video.url)||!/^BV[0-9A-Za-z]+$/.test(video.bvid??''))throw new RemoteError('invalid_video','视频地址无效');
-  const url=new URL(`https://www.bilibili.com/video/${video.bvid}/`);url.searchParams.set('p',String(Math.floor(bounded(params.part??1,1,10000))));
-  const id=await target();currentBinding={playbackId:params.playbackId,bvid:video.bvid,part:Number(url.searchParams.get('p')),managed,time:params.time??0};const openedBinding=currentBinding;await remember();
+  if(!video)throw new RemoteError('invalid_video','缺少视频或剧集');
+  const url=new URL(playbackUrl(video,bounded(params.part??1,1,10000)));
+  const id=await target();currentBinding={playbackId:params.playbackId,bvid:video.bvid,part:videoLocation(url.href).part,managed,time:params.time??0};const openedBinding=currentBinding;await remember();
   await navigation(id,url.href);
   if(targetId!==id||currentBinding!==openedBinding)throw new RemoteError('target_changed','电脑上已切换视频');
   return content(id,'player.bind',{...openedBinding,originalAutoNext});
@@ -99,7 +99,8 @@ async function handle(req:Request):Promise<unknown>{
   switch(req.method){
     case 'tabs.list':return (await chrome.tabs.query({url:['https://www.bilibili.com/*']})).filter(t=>t.id!==catalogId).map(t=>({id:t.id,title:t.title??'哔哩哔哩',url:t.url,selected:t.id===targetId}));
     case 'tabs.select':{const id=bounded(p.tabId,0,Number.MAX_SAFE_INTEGER);if(!await tabExists(id)||id===catalogId)throw new RemoteError('invalid_tab','这个标签页已经关闭或不属于哔哩哔哩');await leaveWindowFullscreen();if(targetId&&await tabExists(targetId))await content(targetId,'player.manage',{enabled:false});targetId=id;currentBinding=undefined;managed=false;originalAutoNext=undefined;await remember();return content(id,'player.state')}
-    case 'search':{const query=String(p.query??'').trim();if(!query||query.length>200)throw new RemoteError('invalid_request','搜索词必须为 1～200 字');const kind=p.kind==='creators'?'creators':'videos';const url=`https://search.bilibili.com/${kind==='creators'?'upuser':'video'}?keyword=${encodeURIComponent(query)}`;return serializedCatalog(()=>catalog(url,kind,Math.floor(bounded(p.page??1,1,10000))))}
+    case 'search':{const query=String(p.query??'').trim();if(!query||query.length>200)throw new RemoteError('invalid_request','搜索词必须为 1～200 字');const {url,kind}=searchRoute(query,p.kind);return serializedCatalog(()=>catalog(url,kind,Math.floor(bounded(p.page??1,1,10000))))}
+    case 'season.episodes':{const url=String(p.url??'');if(!contentId(url)?.startsWith('ss'))throw new RemoteError('invalid_url','影视片目地址无效');return serializedCatalog(()=>catalog(url,'episodes',Math.floor(bounded(p.page??1,1,10000))))}
     case 'creator.videos':{
       const keyword=String(p.keyword??'').trim();if(keyword.length>100)throw new RemoteError('invalid_request','搜索词不能超过 100 字');
       const query=new URLSearchParams({order:p.order==='popular'?'click':'pubdate',keyword});

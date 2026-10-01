@@ -1,4 +1,4 @@
-import { CollectionItem, CreatorItem, PageResult, RemoteError, VideoItem } from './types';
+import { CollectionItem, contentId, CreatorItem, PageResult, RemoteError, VideoItem } from './types';
 
 export function durationSeconds(text:string):number|undefined {
   const match=text.match(/(?:^|\s)(\d{1,3}:\d{2}(?::\d{2})?)(?:\s|$)/);
@@ -59,6 +59,68 @@ export function creatorItems(root:ParentNode=document):CreatorItem[]{
   }
   return [...found.values()];
 }
+export function mediaItems(root:ParentNode=document):CollectionItem[]{
+  const found=new Map<string,CollectionItem>();
+  for(const row of root.querySelectorAll('.media-card,.bangumi-item')){
+    const anchor=row.querySelector<HTMLAnchorElement>('.media-card-content-head-title a,a.title')??row.querySelector<HTMLAnchorElement>('a[href*="/bangumi/play/ss"]');
+    const id=anchor&&contentId(anchor.href);
+    if(!id?.startsWith('ss'))continue;
+    const title=anchor!.getAttribute('title')||txt(anchor);
+    if(!title)continue;
+    const detail=txt(row.querySelector('.media-card-content-head-label,.info'));
+    const category=txt(row.querySelector('.media-card-content-head-title-tag,.type'));
+    const badge=txt(row.querySelector('.media-card-image-tag'));
+    found.set(id,{id,title,url:`https://www.bilibili.com/bangumi/play/${id}`,cover:imageOf(row),count:Number(detail.match(/(?:全|更新至(?:第)?)\s*(\d+)\s*[集话]/)?.[1])||undefined,description:[category,detail,badge].filter(Boolean).join(' · ')});
+  }
+  return [...found.values()];
+}
+export function episodeSection(root:ParentNode=document):Element|null {
+  // Only the main feature: trailers, extras and recommendations are separate panels.
+  const panels=[...root.querySelectorAll('section[class*="SectionPanel_panel"],.ep-list-wrapper,#eplist_module')];
+  return panels.find(panel=>txt(panel.querySelector('h3,.ep-list-title,.list-title')).startsWith('正片'))??panels[0]??null;
+}
+export function episodeItems(root:ParentNode=document):VideoItem[]{
+  const section=episodeSection(root);if(!section)return [];
+  const found=new Map<string,VideoItem>();
+  const cover=coverUrl(document.querySelector('meta[property="og:image"]')?.getAttribute('content'));
+  for(const anchor of section.querySelectorAll<HTMLAnchorElement>('a[href*="/bangumi/play/ep"]')){
+    const id=contentId(anchor.href);if(!id?.startsWith('ep'))continue;
+    const label=anchor.getAttribute('title')||txt(anchor.querySelector('[class*="numberTitle"],.ep-title,.long-title'))||txt(anchor);
+    if(!label)continue;
+    const title=/^\d+$/.test(label)?`第 ${label} 集`:label;
+    found.set(id,{bvid:id,title,url:`https://www.bilibili.com/bangumi/play/${id}`,cover,creatorName:txt(anchor.querySelector('[class*="Badge"],.badge'))||undefined});
+  }
+  return [...found.values()];
+}
+export async function readEpisodes():Promise<PageResult<VideoItem>>{
+  for(let attempt=0;attempt<80;attempt++){
+    const error=pageError();if(error)throw error;
+    if(episodeItems().length)break;
+    await new Promise(resolve=>setTimeout(resolve,250));
+  }
+  const section=episodeSection();if(!section)throw new RemoteError('page_changed','未能读取正片选集，请检查电脑上的影视页面');
+  const scroll=section.querySelector<HTMLElement>('[class*="EpisodeVirtualList_scroll"]');
+  const found=new Map<string,VideoItem>();
+  const collect=()=>{for(const item of episodeItems())if(!found.has(item.bvid))found.set(item.bvid,item)};
+  // Virtualized lists only render a window of episodes. Harvest each scroll window.
+  if(scroll){
+    const original=scroll.scrollTop;
+    try{
+      for(let position=0,step=0;step<500;step++){
+        scroll.scrollTop=position;scroll.dispatchEvent(new Event('scroll'));
+        await new Promise(resolve=>setTimeout(resolve,100));collect();
+        if(position>=scroll.scrollHeight-scroll.clientHeight)break;
+        position=Math.min(scroll.scrollHeight-scroll.clientHeight,position+Math.max(50,scroll.clientHeight*.75));
+      }
+    }finally{scroll.scrollTop=original;scroll.dispatchEvent(new Event('scroll'))}
+  }else collect();
+  const expected=Number(txt(section).match(/\(\s*\d+\s*\/\s*(\d+)\s*\)/)?.[1]);
+  if(!found.size||(expected&&found.size!==expected))throw new RemoteError('page_changed','选集尚未完整加载，请刷新电脑影视页面后重试');
+  const items=[...found.values()];
+  // Numbered episodes may be displayed in descending order on the website.
+  if(items.every(item=>/^第 \d+ 集$/.test(item.title)))items.sort((a,b)=>Number(a.title.match(/\d+/)![0])-Number(b.title.match(/\d+/)![0]));
+  return {items,page:1,totalPages:1,total:items.length};
+}
 export function collectionItems(root:ParentNode=document):CollectionItem[]{
   const found=new Map<string,CollectionItem>();
   for(const anchor of root.querySelectorAll<HTMLAnchorElement>('a[href]')){
@@ -92,7 +154,7 @@ export function pagination(root:ParentNode=document):{totalPages:number;total?:n
   const body=txt(root instanceof Document?root.body:root as Element);
   const pages=Number(body.match(/共\s*(\d+)\s*页/)?.[1]);
   const total=Number(body.match(/共\s*\d+\s*页\s*\/\s*(\d+)\s*个/)?.[1]);
-  const pager=[...root.querySelectorAll('button,.vui_pagenation--btn-num,.pagination-btn,.be-pager-item')].map(e=>txt(e)).filter(x=>/^\d+$/.test(x)).map(Number);
+  const pager=[...root.querySelectorAll('button,.vui_pagenation--btn-num,.pagination-btn,.be-pager-item')].filter(e=>!e.closest('.media-card,.bangumi-item')).map(e=>txt(e)).filter(x=>/^\d+$/.test(x)).map(Number);
   return {totalPages:pages||Math.max(1,...pager),total:total||undefined};
 }
 export function pageError():RemoteError|undefined {
@@ -102,12 +164,14 @@ export function pageError():RemoteError|undefined {
   if(errors&&/失败|出错|异常|繁忙|稍后/.test(errors))return new RemoteError('catalog_unavailable',errors.slice(0,180));
   return undefined;
 }
-function emptyVisible():boolean {return /没有相关|没有找到|还没有|还没建过|什么也没有|暂无视频|暂无内容|空空如也/.test([...document.querySelectorAll('[class*="empty"],[class*="no-data"],[class*="nodata"]')].map(txt).join(' '))}
+function emptyVisible():boolean {return /没有相关|没有找到|还没有|还没建过|什么也没有|暂无视频|暂无内容|空空如也|寂寞如雪/.test([...document.querySelectorAll('[class*="empty"],[class*="no-data"],[class*="nodata"]')].map(txt).join(' '))}
+function catalogItems(kind:string){return kind==='media'?mediaItems():kind==='creators'?creatorItems():kind==='collections'?collectionItems():videoItems()}
 export async function readCatalog(kind:string):Promise<PageResult<VideoItem|CreatorItem|CollectionItem>>{
+  if(kind==='episodes')return readEpisodes();
   let firstItemsAt:number|undefined;
   for(let attempt=0;attempt<80;attempt++){
     const error=pageError();if(error)throw error;
-    const items=kind==='creators'?creatorItems():kind==='collections'?collectionItems():videoItems();
+    const items=catalogItems(kind);
     if(items.length&&firstItemsAt===undefined)firstItemsAt=attempt;
     const coversReady=items.every(item=>'avatar' in item?!!item.avatar:'cover' in item&&!!item.cover);
     if((items.length&&(coversReady||attempt-(firstItemsAt??attempt)>=6||attempt===79))||emptyVisible()){const {totalPages,total}=pagination();return {items,page:1,totalPages,total,nextPage:totalPages>1?2:undefined}}
@@ -117,8 +181,8 @@ export async function readCatalog(kind:string):Promise<PageResult<VideoItem|Crea
 }
 export async function turnPage(page:number,kind:string):Promise<void>{
   if(page===1)return;
-  const before=JSON.stringify(kind==='collections'?collectionItems():kind==='creators'?creatorItems():videoItems());
-  const button=[...document.querySelectorAll<HTMLElement>('button,.vui_pagenation--btn-num,.be-pager-item')].find(e=>txt(e)===String(page));
+  const before=JSON.stringify(catalogItems(kind));
+  const button=[...document.querySelectorAll<HTMLElement>('button,.vui_pagenation--btn-num,.be-pager-item')].find(e=>!e.closest('.media-card,.bangumi-item')&&txt(e)===String(page));
   if(button)button.click();
   else {
     const input=document.querySelector<HTMLInputElement>('.vui_pagenation input,.vui_pagination input,.be-pager input,input[type="number"]');
@@ -128,7 +192,7 @@ export async function turnPage(page:number,kind:string):Promise<void>{
   }
   for(let attempt=0;attempt<80;attempt++){
     await new Promise(resolve=>setTimeout(resolve,250));const error=pageError();if(error)throw error;
-    const after=JSON.stringify(kind==='collections'?collectionItems():kind==='creators'?creatorItems():videoItems());
+    const after=JSON.stringify(catalogItems(kind));
     if(after!==before&&after!=='[]')return;
   }
   throw new RemoteError('catalog_timeout','目录翻页未完成，请重试');

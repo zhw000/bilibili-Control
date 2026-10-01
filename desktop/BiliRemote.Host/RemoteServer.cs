@@ -113,7 +113,7 @@ public sealed class RemoteServer:IDisposable
             case "snapshot":return Wire.Element(Snapshot());
             case "system.volume":return Wire.Element(audio.Set(value:Validation.Range(p,"value",0,1)));
             case "system.mute":if(!p.TryGetProperty("value",out var mute)||mute.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new RemoteException("invalid_request","静音状态必须为布尔值");return Wire.Element(audio.Set(mute:mute.GetBoolean()));
-            case "queue.start":{var source=Wire.Decode<QueueSource>(p);if(source.Kind is not("manual" or "creator" or "collection" or "favorites"))throw new RemoteException("invalid_request","未知队列来源");if(source.Kind=="manual"&&source.Items?.Any(v=>!Validation.BilibiliUrl(v.Url))==true)throw new RemoteException("invalid_url","视频地址无效");await Queue.Start(source);return Wire.Element(Queue.Snapshot);}
+            case "queue.start":{var source=Wire.Decode<QueueSource>(p);if(source.Kind is not("manual" or "creator" or "collection" or "favorites" or "season"))throw new RemoteException("invalid_request","未知队列来源");if(source.Kind=="manual"&&source.Items?.Any(v=>!Validation.BilibiliUrl(v.Url))==true)throw new RemoteException("invalid_url","视频地址无效");await Queue.Start(source);return Wire.Element(Queue.Snapshot);}
             case "queue.next":await Queue.Move(1);return Wire.Element(Queue.Snapshot);
             case "queue.previous":await Queue.Move(-1);return Wire.Element(Queue.Snapshot);
             case "queue.select":await Queue.Select(p.Text("bvid"));return Wire.Element(Queue.Snapshot);
@@ -122,7 +122,7 @@ public sealed class RemoteServer:IDisposable
             case "player.open":{var video=Wire.Decode<VideoItem>(p.GetProperty("video"));await Queue.Start(new("manual",Items:[video]));return Wire.Element(Queue.Snapshot);}
             case "tabs.select":await Queue.Stop("已切换控制标签页");var selected=await bridge.Call(request.Method,p);player=Wire.Decode<PlayerState>(selected);Publish();return selected;
             case "player.command":{var result=await bridge.Call(request.Method,p);player=Wire.Decode<PlayerState>(result);Queue.Observe(player);Publish();return result;}
-            case "tabs.list":case "search":case "creator.videos":case "creator.collections":case "collection.videos":case "player.related":
+            case "tabs.list":case "search":case "creator.videos":case "creator.collections":case "collection.videos":case "season.episodes":case "player.related":
             case "creator.profile":case "favorites.folders":case "favorites.videos":case "comments.list":case "comments.add":case "home.feed":return await bridge.Call(request.Method,p);
             default:throw new RemoteException("unknown_method","不支持的操作");
         }
@@ -132,6 +132,7 @@ public sealed class RemoteServer:IDisposable
         var result=source.Kind switch {
             "creator" => await bridge.Call("creator.videos",new{source.CreatorId,source.Order,source.Keyword,page}),
             "favorites" => await bridge.Call("favorites.videos",new{source.FolderId,source.Keyword,page}),
+            "season" => await bridge.Call("season.episodes",new{source.Url,page}),
             _ => await bridge.Call("collection.videos",new{source.Url,page})
         };
         return Wire.Decode<PageResult<VideoItem>>(result);

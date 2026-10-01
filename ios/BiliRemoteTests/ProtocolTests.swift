@@ -15,6 +15,16 @@ final class ProtocolTests: XCTestCase {
         var automatic = try XCTUnwrap(state.quality); automatic.currentId = "0"
         XCTAssertEqual(automatic.displayName, "自动")
     }
+    func testLicensedEpisodeProtocolAndPlaylist() throws {
+        let data = Data(#"{"items":[{"bvid":"ep123","title":"第 1 集","url":"https://www.bilibili.com/bangumi/play/ep123"}],"page":1,"totalPages":1,"total":1}"#.utf8)
+        let result = try JSONDecoder().decode(PageResult<VideoItem>.self, from: data)
+        let source = QueueSource(kind: "season", url: "https://www.bilibili.com/bangumi/play/ss10", startBvid: "ep123")
+        let queue = QueueSnapshot(source: source, items: result.items, index: 0, active: true)
+        XCTAssertTrue(queue.isPlaylist(for: PlayerState(bvid: "ep123")))
+        XCTAssertFalse(queue.isPlaylist(for: PlayerState(bvid: "ep456")))
+        let decoded = try JSONDecoder().decode(QueueSource.self, from: JSONEncoder().encode(source))
+        XCTAssertEqual(decoded.startBvid, "ep123")
+    }
     func testPlaylistAndRelatedVideoSelection() {
         let video = VideoItem(bvid: "BV1", title: "第一条", url: "https://www.bilibili.com/video/BV1/")
         let player = PlayerState(bvid: "BV1")

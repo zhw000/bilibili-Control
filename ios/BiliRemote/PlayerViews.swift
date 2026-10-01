@@ -44,9 +44,9 @@ struct PlayerView: View {
                             }.font(.subheadline).padding(14).frame(maxWidth: .infinity, minHeight: 48)
                                 .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
                         }.buttonStyle(.plain).disabled(!model.ready).accessibilityIdentifier("videoQuality")
-                        NavigationLink(value: VideoCommentsRoute(bvid: player.bvid)) {
+                        if player.bvid.hasPrefix("BV") { NavigationLink(value: VideoCommentsRoute(bvid: player.bvid)) {
                             Label("查看评论 / 发表评论", systemImage: "bubble.left.and.bubble.right").font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
-                        }.buttonStyle(.bordered).disabled(!model.ready)
+                        }.buttonStyle(.bordered).disabled(!model.ready) }
                         volume
                         PlaybackListSection()
                     }
@@ -163,7 +163,7 @@ struct PlaybackListSection: View {
         VStack(alignment: .leading, spacing: 14) {
             if model.showsPlaylist {
                 HStack {
-                    Text(queue.source?.kind == "creator" ? "UP 主投稿" : queue.source?.kind == "collection" ? "合集 / 系列" : queue.source?.kind == "favorites" ? "收藏夹" : "播放队列").font(.title3.bold())
+                    Text(queue.source?.kind == "season" ? "正片选集" : queue.source?.kind == "creator" ? "UP 主投稿" : queue.source?.kind == "collection" ? "合集 / 系列" : queue.source?.kind == "favorites" ? "收藏夹" : "播放队列").font(.title3.bold())
                     Spacer()
                     Text("\(queue.index + 1) / \(queue.items.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }

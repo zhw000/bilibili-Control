@@ -59,7 +59,7 @@ public sealed class NativeBridge : IDisposable
             await writeGate.WaitAsync(lifetime.Token);
             try {if(writer==null)throw new RemoteException("browser_disconnected","Chrome 扩展已断开");await writer.WriteLineAsync(JsonSerializer.Serialize(new Request(1,id,method,Wire.Element(parameters)),Wire.Json));}
             finally{writeGate.Release();}
-            return await promise.Task.WaitAsync(TimeSpan.FromSeconds(method is "search" or "creator.videos" or "creator.collections" or "collection.videos" or "comments.add"?75:35),lifetime.Token);
+            return await promise.Task.WaitAsync(TimeSpan.FromSeconds(method is "search" or "creator.videos" or "creator.collections" or "collection.videos" or "season.episodes" or "comments.add"?75:35),lifetime.Token);
         }
         catch(TimeoutException){throw new RemoteException("browser_timeout","浏览器响应超时，请查看电脑网页后重试");}
         finally {pending.TryRemove(id,out _);}

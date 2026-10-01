@@ -11,7 +11,7 @@ $sourceExtension = Join-Path $PSScriptRoot 'extension'
 $sourceManifest = Get-Content -LiteralPath (Join-Path $sourceExtension 'manifest.json') -Raw | ConvertFrom-Json
 $targetManifest = Get-Content -LiteralPath (Join-Path $extensionRoot 'manifest.json') -Raw | ConvertFrom-Json
 if (-not $sourceManifest.key -or $sourceManifest.key -ne $targetManifest.key) { throw 'The selected extension directory belongs to a different extension.' }
-$componentNames = @('BiliRemote.dll', 'BiliRemote.Core.dll')
+$componentNames = @('BiliRemote.exe', 'BiliRemote.dll', 'BiliRemote.Core.dll')
 foreach ($name in $componentNames) {
     if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $name)) -or -not (Test-Path -LiteralPath (Join-Path $installRoot $name))) { throw "Missing component: $name" }
 }

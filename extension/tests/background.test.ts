@@ -96,3 +96,27 @@ it('does not reattach a stopped queue when the page reloads',async()=>{
   await request('player.manage',{enabled:false});chromeMock.tabs.sendMessage.mockClear();
   contentMessage({event:'content.ready'},{tab:{id:1}},()=>{});await flush();expect(chromeMock.tabs.sendMessage).not.toHaveBeenCalled();
 });
+it('opens an EP URL and preserves its binding across tracking changes',async()=>{
+  let url='https://www.bilibili.com/video/BV1/';
+  chromeMock.tabs.update=vi.fn(async(_id:number,change:any)=>{if(change.url){url=change.url;tabUpdated(1,{url})}return {id:1,url}});
+  chromeMock.tabs.get.mockImplementation(async()=>({id:1,url,status:'complete',windowId:10}));
+  const reply=await call('player.open',{video:{bvid:'ep123',url:'https://www.bilibili.com/bangumi/play/ep123'},playbackId:'ep-queue'},'open-episode');
+  expect(reply.ok).toBe(true);expect(url).toBe('https://www.bilibili.com/bangumi/play/ep123');
+  expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(1,{method:'player.bind',params:expect.objectContaining({bvid:'ep123',part:1,playbackId:'ep-queue'})});
+  tabUpdated(1,{url:url+'?from=search'});await flush();
+  expect(post.mock.calls.some(([message])=>message.event==='target.navigated')).toBe(false);
+  tabUpdated(1,{url:'https://www.bilibili.com/bangumi/play/ep456'});await flush();
+  expect(post).toHaveBeenCalledWith({v:1,event:'target.navigated',data:{}});
+});
+it('reads licensed search and episodes in a separate muted catalog tab',async()=>{
+  let url='https://www.bilibili.com/';
+  chromeMock.tabs.create=vi.fn(async()=>({id:2}));
+  chromeMock.tabs.update=vi.fn(async(_id:number,change:any)=>{if(change.url)url=change.url;return {id:2,url}});
+  chromeMock.tabs.get.mockImplementation(async(id:number)=>({id,url:id===2?url:'https://www.bilibili.com/video/BV1/',status:'complete'}));
+  chromeMock.tabs.sendMessage.mockResolvedValue({ok:true,result:{items:[],page:1,totalPages:1}});
+  expect((await call('search',{query:'纪录片',kind:'media'},'media-search')).ok).toBe(true);
+  expect(new URL(url).pathname).toBe('/pgc');expect(chromeMock.tabs.update).toHaveBeenCalledWith(2,{muted:true,autoDiscardable:false});
+  expect((await call('season.episodes',{url:'https://www.bilibili.com/bangumi/play/ss10'},'episodes')).ok).toBe(true);
+  expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(2,{method:'catalog.read',params:{kind:'episodes'}});
+  expect(chromeMock.tabs.update.mock.calls.every(([id]:[number])=>id===2)).toBe(true);
+});

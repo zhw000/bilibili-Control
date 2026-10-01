@@ -51,7 +51,9 @@ public sealed class PlaybackQueue
                 } while (true);
             }
             if (items.Count == 0) throw new RemoteException("empty_queue", "这个列表还没有可播放的视频");
-            index = 0; await StartCurrent();
+            index = newSource.StartBvid == null ? 0 : items.FindIndex(item => item.Bvid == newSource.StartBvid);
+            if (index < 0) throw new RemoteException("queue_changed", "该剧集已不在选集中，请刷新后重试");
+            await StartCurrent();
         }
         catch (Exception ex) { await Suspend(ex.Message); throw; }
         finally { gate.Release(); }

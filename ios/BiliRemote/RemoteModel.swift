@@ -34,6 +34,12 @@ import SwiftUI
                 snapshot.player = PlayerState(bvid: first.bvid, title: first.title, url: first.url, currentTime: 187, duration: 754, paused: false, volume: 0.7)
                 snapshot.player.quality = PlaybackQuality(currentId: "80", currentLabel: "1080P 高清", options: [VideoQualityOption(id: "120", label: "4K 超清", badge: "当前不可用", disabled: true), VideoQualityOption(id: "80", label: "1080P 高清"), VideoQualityOption(id: "64", label: "720P 准高清"), VideoQualityOption(id: "32", label: "480P 标清"), VideoQualityOption(id: "16", label: "360P 流畅"), VideoQualityOption(id: "0", label: "自动")], width: 1920, height: 1080)
                 snapshot.queue = QueueSnapshot(source: QueueSource(kind: "creator", creatorId: "1"), items: [first, second], index: 0, active: true)
+                if ProcessInfo.processInfo.arguments.contains("--preview-season") {
+                    let episodes = (1...7).map { VideoItem(bvid: "ep\($0)", title: "第 \($0) 集", url: "https://www.bilibili.com/bangumi/play/ep\($0)", cover: "preview-cover") }
+                    snapshot.player.bvid = "ep1"; snapshot.player.title = "纪录片 · 第 1 集"
+                    snapshot.player.url = episodes[0].url
+                    snapshot.queue = QueueSnapshot(source: QueueSource(kind: "season", url: "https://www.bilibili.com/bangumi/play/ss1"), items: episodes, index: 0, active: true)
+                }
                 if ProcessInfo.processInfo.arguments.contains("--preview-related") {
                     snapshot.queue = QueueSnapshot(source: QueueSource(kind: "manual"), items: [first], index: 0, active: true)
                     relatedBvid = first.bvid
@@ -50,7 +56,7 @@ import SwiftUI
     var currentCover: String? { snapshot.player.cover ?? snapshot.queue.items.first(where: { $0.bvid == snapshot.player.bvid })?.cover }
     var showsPlaylist: Bool { snapshot.queue.isPlaylist(for: snapshot.player) }
     var visibleRelatedVideos: [VideoItem] { relatedBvid == snapshot.player.bvid ? relatedVideos : [] }
-    var relatedRequestKey: String { ready && !showsPlaylist ? snapshot.player.bvid : "" }
+    var relatedRequestKey: String { ready && !showsPlaylist && snapshot.player.bvid.hasPrefix("BV") ? snapshot.player.bvid : "" }
     func loadRelated() async {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-state") { return }

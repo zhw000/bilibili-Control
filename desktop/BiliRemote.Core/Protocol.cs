@@ -31,7 +31,7 @@ public sealed record VideoItem(string Bvid, string Title, string Url, string? Co
 public sealed record CreatorItem(string Id, string Name, string Url, string? Avatar = null, string? Description = null);
 public sealed record CollectionItem(string Id, string Title, string Url, string? Cover = null, int? Count = null);
 public sealed record PageResult<T>(IReadOnlyList<T> Items, int Page, int TotalPages, int? Total = null, int? NextPage = null);
-public sealed record QueueSource(string Kind, string? CreatorId = null, string? Url = null, string Order = "newest", IReadOnlyList<VideoItem>? Items = null, string? FolderId = null, string? Keyword = null);
+public sealed record QueueSource(string Kind, string? CreatorId = null, string? Url = null, string Order = "newest", IReadOnlyList<VideoItem>? Items = null, string? FolderId = null, string? Keyword = null, string? StartBvid = null);
 public sealed record QueueSnapshot(QueueSource? Source, IReadOnlyList<VideoItem> Items, int Index, int? NextPage, bool Active, bool CanResume, string? Message, string? PlaybackId);
 public sealed record VideoQualityOption(string Id, string Label, string? Badge = null, bool Disabled = false);
 public sealed record PlaybackQuality(IReadOnlyList<VideoQualityOption> Options, string? CurrentId = null, string? CurrentLabel = null, int? Width = null, int? Height = null);

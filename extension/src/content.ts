@@ -1,7 +1,7 @@
 import {coverUrl,openCollection,readCatalog,turnPage} from './catalog';
 import {readRelated} from './related';
 import {bounded,RemoteError} from './types';
-import {autoNextControl,danmakuControl,danmakuOn,partInfo,videoLocation} from './player-dom';
+import {autoNextControl,danmakuControl,danmakuOn,partInfo,playerError,playerIdentity,videoLocation} from './player-dom';
 import {installFullscreenEscape,isPlayerFullscreen,setPlayerFullscreen} from './fullscreen';
 import {readQuality,switchQuality} from './quality';
 
@@ -35,7 +35,7 @@ function emit(event:string,data?:unknown){
   // sendMessage may throw before it returns a Promise when an extension is reloaded.
   try{void chrome.runtime.sendMessage(data===undefined?{event}:{event,data}).catch(runtimeError)}catch(error){runtimeError(error)}
 }
-function snapshot(){const v=video();return {bvid:location.pathname.match(/BV[\w]+/)?.[0]??'',title:document.querySelector('h1')?.textContent?.trim()??document.title.replace(/_哔哩哔哩.*$/,''),url:location.href,cover:coverUrl(document.querySelector('meta[property="og:image"]')?.getAttribute('content')),currentTime:Number.isFinite(v?.currentTime)?v!.currentTime:0,duration:Number.isFinite(v?.duration)?v!.duration:0,paused:v?.paused??true,ended:v?.ended??false,...partInfo(),volume:v?.volume??1,muted:v?.muted??false,rate:v?.playbackRate??1,danmaku:danmakuOn(),fullscreen:isPlayerFullscreen(),quality:readQuality(),playbackId}}
+function snapshot(){const v=video();return {bvid:playerIdentity(),title:document.querySelector('h1')?.textContent?.trim()??document.title.replace(/_哔哩哔哩.*$/,''),url:location.href,cover:coverUrl(document.querySelector('meta[property="og:image"]')?.getAttribute('content')),currentTime:Number.isFinite(v?.currentTime)?v!.currentTime:0,duration:Number.isFinite(v?.duration)?v!.duration:0,paused:v?.paused??true,ended:v?.ended??false,...partInfo(),volume:v?.volume??1,muted:v?.muted??false,rate:v?.playbackRate??1,danmaku:danmakuOn(),fullscreen:isPlayerFullscreen(),quality:readQuality(),playbackId}}
 function manage(value:boolean,original?:unknown){
   if(value&&!runtimeActive())return;
   const control=autoNextControl();
@@ -56,13 +56,12 @@ document.addEventListener('ended',event=>{
   releaseManualNavigation();
   if(!managed||event.target!==video())return;
   event.stopImmediatePropagation();if(endedSent)return;endedSent=true;
-  const state=snapshot();emit(state.part<state.partCount?'player.partEnded':'player.ended',state);
+  const state=snapshot();
+  const complete=()=>{if(!runtimeActive()||state.playbackId!==playbackId||!managed||!matchesBinding(binding??{}))return;const error=playerError(document,true);if(error)emit('player.error',{...state,errorCode:error.code,errorMessage:error.message});else emit(state.part<state.partCount?'player.partEnded':'player.ended',state)};
+  // PGC trial overlays can arrive just after ended; retain synchronous BV events.
+  if(state.bvid.startsWith('ep'))setTimeout(complete,500);else complete();
 },{capture:true,signal:pageListeners.signal});
-function visiblePlayerError():RemoteError|undefined {
-  const error=document.querySelector('.error-panel,.bpx-player-error-message,.error-container')?.textContent?.trim()??'';
-  if(!error)return undefined;
-  return new RemoteError(/不存在|已删除|失效|不见了|被删除/.test(error)?'video_unavailable':/登录|验证/.test(error)?'verification_required':'player_error',error.slice(0,200));
-}
+function visiblePlayerError():RemoteError|undefined {return playerError()}
 function requireBinding(params:Record<string,unknown>){
   requireRuntime();
   if(!binding||binding.playbackId!==params.playbackId||!matchesBinding(params)){
@@ -96,9 +95,9 @@ async function command(params:Record<string,unknown>){
   switch(action){
     case 'quality':{
       if(qualitySwitching)throw new RemoteError('quality_busy','清晰度正在切换，请稍候');
-      if(typeof params.bvid!=='string'||!/^BV[0-9A-Za-z]+$/.test(params.bvid)||typeof params.part!=='number'||!Number.isInteger(params.part)||params.part<1)throw new RemoteError('invalid_request','缺少有效的视频信息，请重新选择清晰度');
+      if(typeof params.bvid!=='string'||!/^(?:BV[0-9A-Za-z]+|ep\d+)$/.test(params.bvid)||typeof params.part!=='number'||!Number.isInteger(params.part)||params.part<1)throw new RemoteError('invalid_request','缺少有效的视频信息，请重新选择清晰度');
       qualitySwitching=true;
-      try{await switchQuality(params.value,()=>runtimeActive()&&params.bvid===location.pathname.match(/BV[\w]+/)?.[0]&&params.part===partInfo().part)}finally{qualitySwitching=false}
+      try{await switchQuality(params.value,()=>runtimeActive()&&params.bvid===playerIdentity()&&params.part===partInfo().part)}finally{qualitySwitching=false}
       break;
     }
     case 'play':try{await v.play()}catch{throw new RemoteError('autoplay_blocked','请先在电脑视频区域点击一次播放')}break;
@@ -128,12 +127,13 @@ function onMessage(message:any,_sender:chrome.runtime.MessageSender,respond:(res
 function report(){
   if(!runtimeActive())return;
   releaseManualNavigation();
-  if(location.hostname!=='www.bilibili.com'||!location.pathname.startsWith('/video/'))return;
+  if(location.hostname!=='www.bilibili.com'||!/^\/(?:video\/|bangumi\/play\/)/.test(location.pathname))return;
   // Leaving the player fullscreen here (Escape, the site's button) must also end the browser window fullscreen.
   const fullscreen=isPlayerFullscreen();if(fullscreenShown&&!fullscreen)emit('player.fullscreenExited');fullscreenShown=fullscreen;
   const v=video();if(v){if(managed)manage(true);emit('player.changed',snapshot());if(!v.ended)endedSent=false}
-  const error=document.querySelector('.error-panel,.bpx-player-error-message,.error-container')?.textContent?.trim()??'';
-  if(error&&error!==lastError){lastError=error;const unavailable=/不存在|已删除|失效|不见了|被删除/.test(error);emit('player.error',{...snapshot(),errorCode:unavailable?'video_unavailable':/登录|验证/.test(error)?'verification_required':'player_error',errorMessage:error.slice(0,200)})}
+  const error=playerError(document,v?.ended);
+  if(error&&error.message!==lastError){lastError=error.message;emit('player.error',{...snapshot(),errorCode:error.code,errorMessage:error.message})}
+  if(!error)lastError='';
 }
 if(runtimeActive()){
   try{chrome.runtime.onMessage.addListener(onMessage)}catch{dispose()}

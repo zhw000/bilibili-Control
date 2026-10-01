@@ -31,6 +31,7 @@ try {
     Copy-Item -Path extension/dist/* -Destination artifacts/windows/extension -Recurse -Force
     Copy-Item -LiteralPath README.md -Destination artifacts/windows/README.md -Force
     Copy-Item -LiteralPath scripts/install-portable.ps1 -Destination artifacts/windows/install.ps1 -Force
+    Copy-Item -LiteralPath scripts/apply-player-update.ps1 -Destination artifacts/windows/update.ps1 -Force
     Compress-Archive -Path artifacts/windows/* -DestinationPath artifacts/BiliRemote-Windows.zip -Force
     Compress-Archive -Path extension/dist/* -DestinationPath artifacts/BiliRemote-Chrome.zip -Force
     $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'

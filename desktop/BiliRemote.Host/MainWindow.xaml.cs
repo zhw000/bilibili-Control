@@ -8,12 +8,18 @@ public partial class MainWindow:System.Windows.Window
 {
     private readonly RemoteServer server;
     private readonly System.Windows.Forms.NotifyIcon tray;
+    private readonly System.Drawing.Icon appIcon;
     private string pairingLink="";
     private bool quitting;
     public MainWindow(RemoteServer server)
     {
         InitializeComponent();this.server=server;
-        tray=new(){Icon=System.Drawing.SystemIcons.Application,Visible=true,Text="哔哩遥控 · 电脑助手"};
+        var iconUri = new Uri("pack://application:,,,/Assets/AppIcon.ico");
+        Icon = BitmapFrame.Create(iconUri);
+        using (var stream = System.Windows.Application.GetResourceStream(iconUri).Stream)
+        using (var resourceIcon = new System.Drawing.Icon(stream, System.Windows.Forms.SystemInformation.SmallIconSize))
+            appIcon = (System.Drawing.Icon)resourceIcon.Clone();
+        tray=new(){Icon=appIcon,Visible=true,Text="哔哩遥控 · 电脑助手"};
         var menu=new System.Windows.Forms.ContextMenuStrip();menu.Items.Add("打开电脑助手",null,(_,_)=>Dispatcher.Invoke(()=>{Show();Activate();}));menu.Items.Add("退出",null,(_,_)=>Dispatcher.Invoke(()=>Quit(null,null!)));tray.ContextMenuStrip=menu;tray.DoubleClick+=(_,_)=>Dispatcher.Invoke(()=>{Show();Activate();});
         Closing+=(_,eventArgs)=>{if(!quitting){eventArgs.Cancel=true;Hide();}};
         server.Changed+=()=>Dispatcher.BeginInvoke(UpdateStatus);UpdateStatus();RefreshPairing(null,null!);
@@ -32,5 +38,5 @@ public partial class MainWindow:System.Windows.Window
         catch(System.ComponentModel.Win32Exception){System.Windows.MessageBox.Show("未修改防火墙。需要允许专用网络连接后，手机才能连接电脑。","哔哩遥控");}
     }
     private void OpenExtension(object? sender,System.Windows.RoutedEventArgs e){var path=Path.Combine(AppContext.BaseDirectory,"extension");if(Directory.Exists(path))Process.Start(new ProcessStartInfo("explorer.exe",$"\"{path}\""){UseShellExecute=true});else System.Windows.MessageBox.Show("开发模式下扩展位于项目的 extension/dist 文件夹。","哔哩遥控");}
-    private void Quit(object? sender,System.Windows.RoutedEventArgs e){quitting=true;tray.Dispose();System.Windows.Application.Current.Shutdown();}
+    private void Quit(object? sender,System.Windows.RoutedEventArgs e){quitting=true;tray.Dispose();appIcon.Dispose();System.Windows.Application.Current.Shutdown();}
 }

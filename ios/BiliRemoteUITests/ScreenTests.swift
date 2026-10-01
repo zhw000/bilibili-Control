@@ -9,6 +9,9 @@ final class ScreenTests: XCTestCase {
         app.tabBars.buttons["发现"].tap()
         XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
         capture(app, "02-discovery")
+        app.segmentedControls.buttons["影视"].tap()
+        XCTAssertTrue(app.staticTexts["电影、电视剧、纪录片等正版影视，进入片目后选集播放。"].exists)
+        capture(app, "15-media-discovery")
         app.tabBars.buttons["收藏"].tap()
         XCTAssertTrue(app.navigationBars["我的收藏"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["连接电脑，开始遥控"].exists)
@@ -34,6 +37,17 @@ final class ScreenTests: XCTestCase {
         capture(app, "13-home-feed")
         scrollTo(app.buttons["feedItem-BVHome12"], in: app)
         capture(app, "14-home-feed-bottom")
+    }
+    @MainActor func testSeasonPlaylistKeepsPlaybackAndVolumeControls() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--preview-state", "--preview-season"]; app.launch()
+        XCTAssertTrue(app.staticTexts["playerTitle"].waitForExistence(timeout: 10))
+        assertPlayerFits(app)
+        scrollTo(app.buttons["声音设置"], in: app)
+        XCTAssertTrue(app.buttons["声音设置"].exists)
+        scrollTo(app.buttons["queueItem-ep2"], in: app)
+        XCTAssertTrue(app.staticTexts["正片选集"].exists)
+        XCTAssertTrue(app.buttons["queueItem-ep2"].exists)
+        capture(app, "16-season-playlist")
     }
     @MainActor func testPlaybackLayoutWithTestState() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--preview-state"]; app.launch()

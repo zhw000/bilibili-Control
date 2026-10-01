@@ -65,6 +65,32 @@ it('still advances a queue exactly once through the captured end event',async()=
   v.dispatchEvent(new Event('ended'));v.dispatchEvent(new Event('ended'));
   expect(site).not.toHaveBeenCalled();expect(emit.mock.calls.filter(([event])=>event.event==='player.ended')).toHaveLength(1);
 });
+it('binds licensed episodes, reports their identity and ends once without a multi-part event',async()=>{
+  history.replaceState({},'','/bangumi/play/ep123');
+  const v=document.querySelector('video')!;Object.defineProperties(v,{readyState:{value:1},duration:{value:100}});
+  const reply=await request('player.bind',{...binding,bvid:'ep123',time:25});
+  expect(reply.ok).toBe(true);expect(reply.result).toMatchObject({bvid:'ep123',part:1,partCount:1});expect(v.currentTime).toBe(25);
+  emit.mockClear();v.dispatchEvent(new Event('ended'));v.dispatchEvent(new Event('ended'));
+  await vi.advanceTimersByTimeAsync(500);
+  expect(emit.mock.calls.filter(([message])=>message.event==='player.ended')).toHaveLength(1);
+  expect(emit.mock.calls.some(([message])=>message.event==='player.partEnded')).toBe(false);
+});
+it('reports trial restrictions instead of advancing, even when the overlay appears after ended',async()=>{
+  history.replaceState({},'','/bangumi/play/ep123');
+  await request('player.attach',{...binding,bvid:'ep123'});
+  emit.mockClear();document.querySelector('video')!.dispatchEvent(new Event('ended'));
+  document.body.insertAdjacentHTML('beforeend','<div class="PromptBar_subtitleText__test">试看中 · 成为大会员</div>');
+  await vi.advanceTimersByTimeAsync(500);
+  expect(emit.mock.calls.some(([message])=>message.event==='player.ended')).toBe(false);
+  expect(emit).toHaveBeenCalledWith(expect.objectContaining({event:'player.error',data:expect.objectContaining({errorCode:'access_required',bvid:'ep123'})}));
+});
+it('cancels a pending episode end when the user manually selects another episode',async()=>{
+  history.replaceState({},'','/bangumi/play/ep123');
+  await request('player.attach',{...binding,bvid:'ep123'});
+  emit.mockClear();document.querySelector('video')!.dispatchEvent(new Event('ended'));
+  history.replaceState({},'','/bangumi/play/ep456');await vi.advanceTimersByTimeAsync(500);
+  expect(emit.mock.calls.some(([message])=>message.event==='player.ended')).toBe(false);
+});
 it('reports leaving the player fullscreen on the computer at once and exactly once',async()=>{
   const player=document.querySelector('.bpx-player-container')!;
   player.insertAdjacentHTML('beforeend','<button class="bpx-player-ctrl-web"></button>');

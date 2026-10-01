@@ -92,6 +92,17 @@ Check(favorites.Flag("ok") && server.Queue.Snapshot.Source?.FolderId == "123" &&
 await phone.Request("queue.next", new { });
 await phone.Request("queue.next", new { });
 Check(server.Queue.Snapshot.Index == 2 && browser.LastCatalog.Number("page") == 2, "favorite queue paginates automatically");
+var seasonUrl = "https://www.bilibili.com/bangumi/play/ss10";
+var episodes = await phone.Request("season.episodes", new { url = seasonUrl, page = 1 });
+Check(episodes.Flag("ok") && episodes.GetProperty("result").GetProperty("items").GetArrayLength() == 3, "licensed episode catalog roundtrip");
+var season = await phone.Request("queue.start", new { kind = "season", url = seasonUrl, startBvid = "ep2" });
+Check(season.Flag("ok") && server.Queue.Snapshot.Index == 1 && browser.State.Bvid == "ep2", "season starts at requested episode over native bridge");
+await browser.Event("player.ended", browser.State with { Ended = true });
+await WaitFor(() => server.Queue.Snapshot.Index == 2);
+Check(browser.State.Bvid == "ep3", "season advances to next EP URL");
+await browser.Event("player.error", browser.State with { ErrorCode = "access_required", ErrorMessage = "本集需要大会员" });
+await WaitFor(() => !server.Queue.Snapshot.Active);
+Check(server.Queue.Snapshot.Index == 2 && server.Queue.Snapshot.Message == "本集需要大会员" && server.Queue.Snapshot.Items[2].UnavailableReason == null, "membership restriction pauses without marking an episode deleted");
 var seconds = args.Length == 2 && args[0] == "--soak-seconds" ? int.Parse(args[1]) : 0;
 var start = DateTimeOffset.UtcNow;
 for (var tick = 0; tick < seconds; tick++)
@@ -173,6 +184,8 @@ sealed class BrowserFixture : IDisposable
                             var first = new VideoItem("BV1test", "One", "https://www.bilibili.com/video/BV1test/");
                             var second = first with { Bvid = "BV2test", Title = "Two" }; var third = first with { Bvid = "BV3test", Title = "Three" };
                             result = request.Params.Number("page") == 1 ? new PageResult<VideoItem>([first, second], 1, 2, 3, 2) : new PageResult<VideoItem>([second, third], 2, 2, 3); break;
+                        case "season.episodes":
+                            result = new PageResult<VideoItem>(Enumerable.Range(1,3).Select(i => new VideoItem("ep"+i,"第 "+i+" 集","https://www.bilibili.com/bangumi/play/ep"+i)).ToArray(),1,1,3); break;
                         case "player.open":
                             var video = Wire.Decode<VideoItem>(request.Params.GetProperty("video"));
                             State = new(Bvid: video.Bvid, Title: video.Title, Url: video.Url, Duration: 600, Paused: false, PlaybackId: request.Params.Text("playbackId"));
