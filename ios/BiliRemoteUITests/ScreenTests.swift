@@ -120,7 +120,15 @@ final class ScreenTests: XCTestCase {
         }
     }
     @MainActor private func scrollTo(_ element: XCUIElement, in app: XCUIApplication) {
-        for _ in 0..<12 { if element.isHittable { return }; app.swipeUp() }
+        // Short drags keep compact screens from skipping a control. Recover if
+        // the target moved above the viewport instead of repeatedly scrolling away.
+        for _ in 0..<30 {
+            if element.isHittable { return }
+            let above = element.exists && element.frame.midY < app.frame.midY
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: above ? 0.4 : 0.65))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: above ? 0.65 : 0.4))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
         XCTAssertTrue(element.isHittable)
     }
     @MainActor private func capture(_ app: XCUIApplication, _ name: String) {
