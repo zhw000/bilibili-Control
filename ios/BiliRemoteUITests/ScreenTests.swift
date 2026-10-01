@@ -124,7 +124,8 @@ final class ScreenTests: XCTestCase {
         // the target moved above the viewport instead of repeatedly scrolling away.
         for _ in 0..<30 {
             if element.isHittable { return }
-            let above = element.exists && element.frame.midY < app.frame.midY
+            let targetFrame = element.exists ? element.frame : .zero
+            let above = !targetFrame.isEmpty && targetFrame.midY < app.frame.midY
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: above ? 0.4 : 0.65))
             let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: above ? 0.65 : 0.4))
             start.press(forDuration: 0.05, thenDragTo: end)
