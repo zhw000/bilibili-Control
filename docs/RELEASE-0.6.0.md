@@ -9,3 +9,9 @@
 需同时更新 Windows 助手、Chrome 扩展和 iOS App。更新后在 Chrome 扩展页重新加载扩展，并刷新 B 站播放页面。会员 / 付费内容使用电脑账号已有的观看权限。
 
 `scripts/apply-player-update.ps1` 现在同时更新 `BiliRemote.exe`（图标位于该文件）、两个应用 DLL 和扩展，并为旧文件建立备份。仅替换 DLL 无法更新资源管理器的程序图标。
+
+## 已验证构建
+
+[构建 36847076049](https://github.com/zhw000/bilibili-Control/actions/runs/36847076049) 对应源码 `a9fc20c`，Windows 与 iOS 均成功，含标准屏和 iPhone SE 界面测试。构建产物提供 Windows 安装程序、便携包、Chrome 扩展与待签名 iOS IPA。
+
+iOS 版本为 0.6.0（build 7），支持 iOS 17.0+，内含 watchOS 10.0+ 配套 App。下载后的 IPA 已通过平台、架构、权限与 Siri 资源校验；SHA-256：`b0c85a89c1ce9f0357de046fe6ede63c47f397e21c75e081d393ba2af1d0f26f`。手机与真实 B 站播放器的完整流程仍需签名安装后验收。
