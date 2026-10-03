@@ -3,7 +3,7 @@ import {RemoteError} from './types';
 
 export function isPlayerFullscreen():boolean{return !!document.fullscreenElement||isWebFullscreen()}
 
-export async function setPlayerFullscreen(enabled:boolean,isActive:()=>boolean=()=>true):Promise<void>{
+export async function setPlayerFullscreen(enabled:boolean,isActive:()=>boolean=()=>true,waitForControl=0):Promise<void>{
   const checkActive=()=>{if(!isActive())throw new RemoteError('extension_reloaded','扩展已重新加载，请刷新这个 B 站页面')};
   checkActive();
   // Retire the old CSS fallback even if the native control has appeared since.
@@ -13,7 +13,11 @@ export async function setPlayerFullscreen(enabled:boolean,isActive:()=>boolean=(
   }
   checkActive();
   if(isPlayerFullscreen()===enabled)return;
-  const control=document.querySelector<HTMLElement>('.bpx-player-ctrl-web,.bilibili-player-video-web-fullscreen');
+  const find=()=>document.querySelector<HTMLElement>('.bpx-player-ctrl-web,.bilibili-player-video-web-fullscreen');
+  let control=find();
+  // A freshly loaded page builds the player controls after the script starts.
+  for(let waited=0;!control&&waited<waitForControl;waited+=200){await new Promise(resolve=>setTimeout(resolve,200));checkActive();control=find()}
+  if(isPlayerFullscreen()===enabled)return;
   if(!control)throw new RemoteError('unsupported','找不到网页全屏按钮，请在电脑播放器中操作');
   control.click();
   for(let i=0;i<10;i++){
@@ -36,5 +40,8 @@ export function installFullscreenEscape(onChanged:()=>void,isActive:()=>boolean=
     pending=setTimeout(()=>{pending=undefined;if(active())void setPlayerFullscreen(false,active).then(()=>{if(active())onChanged()}).catch(()=>{})},0);
   },{signal:listeners.signal});
   document.addEventListener('fullscreenchange',()=>{if(active())onChanged()},{signal:listeners.signal});
-  return ()=>{listeners.abort();clearTimeout(pending)};
+  // The site's own exit button only changes this attribute; report it at once.
+  const screen=new MutationObserver(()=>{if(active())onChanged()});
+  screen.observe(document,{subtree:true,attributes:true,attributeFilter:['data-screen']});
+  return ()=>{listeners.abort();screen.disconnect();clearTimeout(pending)};
 }
