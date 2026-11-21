@@ -129,8 +129,9 @@ final class ScreenTests: XCTestCase {
     @MainActor private func scrollTo(_ element: XCUIElement, in app: XCUIApplication) {
         // These checks visit controls from top to bottom. Lazy rows may leave
         // the accessibility tree while the previous scroll is settling.
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.47))
+        // Use the trailing padding so a drag cannot adjust a volume slider.
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.65))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.47))
         for _ in 0..<30 {
             if element.exists && element.isHittable { return }
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
