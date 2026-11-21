@@ -87,7 +87,13 @@ final class ScreenTests: XCTestCase {
         assertPlayerFits(app)
         scrollTo(app.staticTexts["相关视频 1 · 和朋友一起发现新的风景"], in: app)
         capture(app, "06-inline-related")
-        scrollTo(app.staticTexts["相关视频 12 · 和朋友一起发现新的风景"], in: app)
+        let lastVideo = app.buttons["relatedItem-BVRelated12"]
+        let playerScroll = app.scrollViews["playerScroll"]
+        for _ in 0..<10 {
+            if lastVideo.exists && lastVideo.isHittable { break }
+            playerScroll.swipeUp()
+        }
+        XCTAssertTrue(lastVideo.exists && lastVideo.isHittable)
         XCTAssertEqual(app.scrollViews.count, 1)
         capture(app, "07-related-bottom")
         // Relaunch at the top before rotation. Querying hittability of a far-offscreen
