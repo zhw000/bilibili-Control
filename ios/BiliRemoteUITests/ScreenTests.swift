@@ -111,7 +111,14 @@ final class ScreenTests: XCTestCase {
     @MainActor private func assertPlayerFits(_ app: XCUIApplication) {
         let cover = app.descendants(matching: .any).matching(identifier: "playerCover").firstMatch
         XCTAssertTrue(cover.exists)
-        XCTAssertEqual(cover.frame.width / cover.frame.height, 16.0 / 9.0, accuracy: 0.02)
+        // Rotation updates the accessibility frame asynchronously. Read width
+        // and height from one snapshot after the cover has reached its layout.
+        let coverLayout = NSPredicate { _, _ in
+            let frame = cover.frame
+            return frame.height > 0 && abs(frame.width / frame.height - 16.0 / 9.0) <= 0.02
+        }
+        let layout = XCTNSPredicateExpectation(predicate: coverLayout, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [layout], timeout: 10), .completed, "Expected a 16:9 player cover")
         let elements = [cover, app.staticTexts["playerTitle"], app.buttons["currentTime"], app.staticTexts["duration"], app.buttons["上一个视频"], app.buttons["下一个视频"], app.buttons["mainPlaybackButton"]]
         for element in elements {
             XCTAssertTrue(element.exists)
