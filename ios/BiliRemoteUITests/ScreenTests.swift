@@ -120,17 +120,15 @@ final class ScreenTests: XCTestCase {
         }
     }
     @MainActor private func scrollTo(_ element: XCUIElement, in app: XCUIApplication) {
-        // Short drags keep compact screens from skipping a control. Recover if
-        // the target moved above the viewport instead of repeatedly scrolling away.
+        // These checks visit controls from top to bottom. Lazy rows may leave
+        // the accessibility tree while the previous scroll is settling.
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.47))
         for _ in 0..<30 {
-            if element.isHittable { return }
-            let targetFrame = element.exists ? element.frame : .zero
-            let above = !targetFrame.isEmpty && targetFrame.midY < app.frame.midY
-            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: above ? 0.4 : 0.65))
-            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: above ? 0.65 : 0.4))
-            start.press(forDuration: 0.05, thenDragTo: end)
+            if element.exists && element.isHittable { return }
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
         }
-        XCTAssertTrue(element.isHittable)
+        XCTAssertTrue(element.exists && element.isHittable)
     }
     @MainActor private func capture(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
