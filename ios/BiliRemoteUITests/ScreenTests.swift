@@ -87,7 +87,7 @@ final class ScreenTests: XCTestCase {
         assertPlayerFits(app)
         scrollTo(app.staticTexts["相关视频 1 · 和朋友一起发现新的风景"], in: app)
         capture(app, "06-inline-related")
-        let lastVideo = app.buttons["relatedItem-BVRelated12"]
+        let lastVideo = app.staticTexts["相关视频 12 · 和朋友一起发现新的风景"]
         let playerScroll = app.scrollViews["playerScroll"]
         for _ in 0..<10 {
             if lastVideo.exists && lastVideo.isHittable { break }
