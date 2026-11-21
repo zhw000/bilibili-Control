@@ -17,6 +17,20 @@ public sealed class QueueSelectionTests
         Assert.Equal(2, queue.Snapshot.Index);
         await queue.Select("BV1"); Assert.Equal(0, queue.Snapshot.Index); Assert.True(queue.Snapshot.Active);
     }
+    [Fact] public async Task OpeningWebsiteListReleasesQueueAndIgnoresPreviousEnd()
+    {
+        var calls = new List<bool>();
+        var queue = new PlaybackQueue((_,_)=>throw new NotSupportedException(), (_,_,_,_)=>Task.CompletedTask, enabled=>{calls.Add(enabled);return Task.CompletedTask;});
+        await queue.Start(new("manual", Items:[new("BV1","One","https://www.bilibili.com/video/BV1")]));
+        var old = queue.Snapshot.PlaybackId;
+        await queue.OpenSiteList(()=>Task.FromResult(new PlayerState(Bvid:"BV2")));
+        await queue.Ended(new(Ended:true, PlaybackId:old));
+        Assert.Empty(queue.Snapshot.Items);
+        Assert.False(queue.Snapshot.CanResume);
+        Assert.False(calls.Last());
+        Assert.Equal("BV2",queue.LastState.Bvid);
+    }
+
     [Fact] public async Task SelectingUnknownItemDoesNotStopCurrentPlayback()
     {
         var queue = new PlaybackQueue((_,_)=>throw new NotSupportedException(), (_,_,_,_)=>Task.CompletedTask, _=>Task.CompletedTask);

@@ -74,6 +74,18 @@ it.each(['https://www.bilibili.com/video/BV2/','https://www.bilibili.com/video/B
   expect(chromeMock.storage.session.set).toHaveBeenCalledWith(expect.objectContaining({binding:null,managed:false,originalAutoNext:null}));
   chromeMock.tabs.sendMessage.mockClear();contentMessage({event:'content.ready'},{tab:{id:1}},()=>{});await flush();expect(chromeMock.tabs.sendMessage).not.toHaveBeenCalled();
 });
+it('opens the native series in the selected tab and releases the old video binding',async()=>{
+  const destination='https://www.bilibili.com/list/123/?sid=42';
+  chromeMock.tabs.update=vi.fn().mockResolvedValue({});
+  chromeMock.tabs.get.mockResolvedValue({id:1,url:destination,status:'complete'});
+  const reply=await call('list.open',{kind:'collection',url:'https://space.bilibili.com/123/lists/42?type=series'},'open-list');
+  expect(reply.ok).toBe(true);
+  expect(chromeMock.tabs.update).toHaveBeenCalledWith(1,{url:destination});
+  expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(1,{method:'player.startSite',params:{}});
+  expect(chromeMock.storage.session.set).toHaveBeenCalledWith(expect.objectContaining({managed:false,binding:null}));
+  tabUpdated(1,{url:destination+'&bvid=BVnext'});
+  expect(post.mock.calls.some(([event])=>event.event==='target.navigated')).toBe(false);
+});
 it('keeps the binding when only tracking parameters change',async()=>{
   tabUpdated(1,{url:'https://www.bilibili.com/video/BV1/?p=1&spm_id_from=test'});await flush();
   expect(post.mock.calls.some(([event])=>event.event==='target.navigated')).toBe(false);

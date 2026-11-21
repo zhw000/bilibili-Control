@@ -48,7 +48,7 @@ public sealed class RemoteServer:IDisposable
     {
         queuePath=Path.Combine(DesktopPaths.DataDirectory,"queue.json");
         Queue=new(LoadPage,async(video,id,part,time)=>{var state=await bridge.Call("player.open",new{video,playbackId=id,part,time});player=Wire.Decode<PlayerState>(state);},async enabled=>{if(bridge.Connected)await bridge.Call("player.manage",new{enabled});});
-        try{if(File.Exists(queuePath)){using var doc=JsonDocument.Parse(File.ReadAllText(queuePath));Queue.Restore(Wire.Decode<QueueSnapshot>(doc.RootElement.GetProperty("queue")),Wire.Decode<PlayerState>(doc.RootElement.GetProperty("player")));player=Queue.LastState with{Paused=true,PlaybackId=null};}}catch(Exception){message="上次队列文件无法读取，已启动新会话";}
+        try{if(File.Exists(queuePath)){using var doc=JsonDocument.Parse(File.ReadAllText(queuePath));Queue.Restore(Wire.Decode<QueueSnapshot>(doc.RootElement.GetProperty("queue")),Wire.Decode<PlayerState>(doc.RootElement.GetProperty("player")));player=Queue.LastState with{Paused=true,PlaybackId=null,SiteList=null};}}catch(Exception){message="上次队列文件无法读取，已启动新会话";}
         Queue.Changed+=()=>{Save(true);Publish();};
         bridge.ConnectionChanged+=connected=>{if(!connected){player=player with{Paused=true};_ = Queue.Stop("Chrome 已断开，连接后可继续播放");}Publish();};
         bridge.Event+=(name,data)=>_ = HandleEvent(name,data);
@@ -113,6 +113,7 @@ public sealed class RemoteServer:IDisposable
             case "snapshot":return Wire.Element(Snapshot());
             case "system.volume":return Wire.Element(audio.Set(value:Validation.Range(p,"value",0,1)));
             case "system.mute":if(!p.TryGetProperty("value",out var mute)||mute.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new RemoteException("invalid_request","静音状态必须为布尔值");return Wire.Element(audio.Set(mute:mute.GetBoolean()));
+            case "list.open":await Queue.OpenSiteList(async () => { return player = Wire.Decode<PlayerState>(await bridge.Call("list.open", p)); });return Wire.Element(player);
             case "queue.start":{var source=Wire.Decode<QueueSource>(p);if(source.Kind is not("manual" or "creator" or "collection" or "favorites" or "season"))throw new RemoteException("invalid_request","未知队列来源");if(source.Kind=="manual"&&source.Items?.Any(v=>!Validation.BilibiliUrl(v.Url))==true)throw new RemoteException("invalid_url","视频地址无效");await Queue.Start(source);return Wire.Element(Queue.Snapshot);}
             case "queue.next":await Queue.Move(1);return Wire.Element(Queue.Snapshot);
             case "queue.previous":await Queue.Move(-1);return Wire.Element(Queue.Snapshot);

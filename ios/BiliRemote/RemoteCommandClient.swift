@@ -29,7 +29,13 @@ import Foundation
     static func simpleCommand(_ action: RemoteAction, snapshot: Snapshot) throws -> Command? {
         let queue = snapshot.queue, player = snapshot.player
         if action == .refresh { return Command(method: "snapshot") }
-        if action == .play && queue.canResume && queue.items.indices.contains(queue.index) && (player.bvid.isEmpty || queue.items[queue.index].bvid == player.bvid) { return Command(method: "queue.resume") }
+        if let list = player.siteList, action == .next || action == .previous {
+            guard action == .next ? list.next : list.previous else {
+                throw RemoteFailure(code: "queue_boundary", message: "已到达播放列表边界。")
+            }
+            return Command(method: "player.command", params: ["action": .string(action == .next ? "listNext" : "listPrevious"), "listId": .string(list.id)])
+        }
+        if player.siteList == nil && action == .play && queue.canResume && queue.items.indices.contains(queue.index) && (player.bvid.isEmpty || queue.items[queue.index].bvid == player.bvid) { return Command(method: "queue.resume") }
         guard !player.bvid.isEmpty else { throw RemoteFailure(code: "no_player", message: "请先在手机选择一个视频。") }
         switch action {
         case .play, .pause: return Command(method: "player.command", params: ["action": .string(action.rawValue)])

@@ -10,7 +10,8 @@ struct PlayerView: View {
     @State private var timeText = ""
     private var player: PlayerState { model.snapshot.player }
     private var hasNext: Bool {
-        model.showsPlaylist ? model.snapshot.queue.index + 1 < model.snapshot.queue.items.count || model.snapshot.queue.nextPage != nil : !model.visibleRelatedVideos.isEmpty
+        if let list = player.siteList { return list.next }
+        return model.showsPlaylist ? model.snapshot.queue.index + 1 < model.snapshot.queue.items.count || model.snapshot.queue.nextPage != nil : !model.visibleRelatedVideos.isEmpty
     }
 
     var body: some View {
@@ -86,8 +87,8 @@ struct PlayerView: View {
 
     private var playbackControls: some View {
         HStack(spacing: 0) {
-            controlButton("backward.end.fill", "上一个视频") { model.execute("queue.previous") }
-                .disabled(!model.showsPlaylist || model.snapshot.queue.index <= 0)
+            controlButton("backward.end.fill", "上一个视频") { if player.siteList != nil { model.listAction("listPrevious") } else { model.execute("queue.previous") } }
+                .disabled(!(player.siteList?.previous ?? (model.showsPlaylist && model.snapshot.queue.index > 0)))
             Spacer(minLength: 0)
             controlButton("gobackward.10", "后退十秒") { model.control("seekBy", value: .number(-10)) }
             Spacer(minLength: 0)
@@ -161,7 +162,57 @@ struct PlaybackListSection: View {
     private var queue: QueueSnapshot { model.snapshot.queue }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if model.showsPlaylist {
+            if let list = model.snapshot.player.siteList {
+                HStack {
+                    Text(list.title).font(.title3.bold())
+                    Spacer()
+                    Text("\(list.position) / \(list.total)").font(.caption.monospacedDigit())
+                }
+                if !list.description.isEmpty || !list.subscribe.isEmpty {
+                    DisclosureGroup("合集详情") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if !list.description.isEmpty { Text(list.description).font(.subheadline) }
+                            if !list.subscribe.isEmpty { Button(list.subscribe) { model.listAction("listSubscribe") }.disabled(!model.ready) }
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                if let autoNext = list.autoNext {
+                    Toggle("自动连播", isOn: Binding(get: { autoNext }, set: { value in
+                        if value != autoNext { model.listAction("listAutoNext") }
+                    })).disabled(!model.ready)
+                }
+                if !list.sections.isEmpty {
+                    Menu(list.section.isEmpty ? "选择章节" : list.section) {
+                        ForEach(list.sections) { section in
+                            Button(section.title) { model.listAction("listSection", value: .string(section.id)) }
+                        }
+                    }.disabled(!model.ready)
+                }
+                HStack {
+                    if !list.order.isEmpty { Button(list.order) { model.listAction("listOrder") } }
+                    if !list.mode.isEmpty { Button(list.mode) { model.listAction("listMode") } }
+                    if list.parts.count > 1 {
+                        Menu("分 P · \(list.part)/\(list.parts.count)") {
+                            ForEach(list.parts.indices, id: \.self) { i in
+                                Button("P\(i + 1)  \(list.parts[i])") { model.listAction("listPart", value: .number(Double(i + 1))) }
+                            }
+                        }
+                    }
+                }.buttonStyle(.bordered).disabled(!model.ready)
+                if list.before { Button("查看前面的选集") { model.listAction("listBefore") }.disabled(!model.ready) }
+                ForEach(list.items) { item in
+                    Button { model.listAction("listSelect", value: .string(item.bvid)) } label: {
+                        HStack {
+                            if item.bvid == model.snapshot.player.bvid { Image(systemName: "waveform").accessibilityLabel("当前播放") }
+                            Text(item.title).lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
+                            if !item.duration.isEmpty { Text(item.duration).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                        }.padding(.vertical, 8).contentShape(Rectangle())
+                    }.buttonStyle(.plain).disabled(!model.ready)
+                    .foregroundStyle(item.bvid == model.snapshot.player.bvid ? Color.biliPink : .primary)
+                    Divider()
+                }
+                if list.after { Button("查看后面的选集") { model.listAction("listAfter") }.disabled(!model.ready) }
+            } else if model.showsPlaylist {
                 HStack {
                     Text(queue.source?.kind == "season" ? "正片选集" : queue.source?.kind == "creator" ? "UP 主投稿" : queue.source?.kind == "collection" ? "合集 / 系列" : queue.source?.kind == "favorites" ? "收藏夹" : "播放队列").font(.title3.bold())
                     Spacer()

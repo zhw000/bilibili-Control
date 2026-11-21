@@ -95,6 +95,19 @@ public sealed class PlaybackQueue
         try { await manage(false); } catch { /* Preserve the original playback/catalogue error. */ }
         Notify();
     }
+    public async Task OpenSiteList(Func<Task<PlayerState>> open)
+    {
+        await gate.WaitAsync();
+        try
+        {
+            await manage(false);
+            active = false; playbackId = null;
+            var state = await open();
+            lastState = state;
+            source = null; items.Clear(); index = -1; nextPage = null; message = null;
+        }
+        finally { Notify(); gate.Release(); }
+    }
     public async Task Resume()
     {
         await gate.WaitAsync();

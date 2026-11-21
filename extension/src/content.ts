@@ -5,6 +5,8 @@ import {autoNextControl,danmakuControl,danmakuOn,partInfo,playerError,playerIden
 import {installFullscreenEscape,isPlayerFullscreen,setPlayerFullscreen} from './fullscreen';
 import {readQuality,switchQuality} from './quality';
 
+import {currentBvid,siteAction,siteList} from './site-list';
+
 let managed=false,playbackId:string|undefined,endedSent=false,lastError='';
 let previousAutoNext:boolean|undefined;
 let binding:Record<string,unknown>|undefined;
@@ -35,7 +37,11 @@ function emit(event:string,data?:unknown){
   // sendMessage may throw before it returns a Promise when an extension is reloaded.
   try{void chrome.runtime.sendMessage(data===undefined?{event}:{event,data}).catch(runtimeError)}catch(error){runtimeError(error)}
 }
-function snapshot(){const v=video();return {bvid:playerIdentity(),title:document.querySelector('h1')?.textContent?.trim()??document.title.replace(/_哔哩哔哩.*$/,''),url:location.href,cover:coverUrl(document.querySelector('meta[property="og:image"]')?.getAttribute('content')),currentTime:Number.isFinite(v?.currentTime)?v!.currentTime:0,duration:Number.isFinite(v?.duration)?v!.duration:0,paused:v?.paused??true,ended:v?.ended??false,...partInfo(),volume:v?.volume??1,muted:v?.muted??false,rate:v?.playbackRate??1,danmaku:danmakuOn(),fullscreen:isPlayerFullscreen(),quality:readQuality(),playbackId}}
+function playbackParts(list:ReturnType<typeof siteList>){
+  if(list?.parts.length)return {part:list.part||1,partCount:list.parts.length};
+  return partInfo();
+}
+function snapshot(){const v=video(),list=managed?undefined:siteList();return {bvid:playerIdentity()||currentBvid(),siteList:list,title:document.querySelector('h1')?.textContent?.trim()??document.title.replace(/_哔哩哔哩.*$/,''),url:location.href,cover:coverUrl(document.querySelector('meta[property="og:image"]')?.getAttribute('content')),currentTime:Number.isFinite(v?.currentTime)?v!.currentTime:0,duration:Number.isFinite(v?.duration)?v!.duration:0,paused:v?.paused??true,ended:v?.ended??false,...playbackParts(list),volume:v?.volume??1,muted:v?.muted??false,rate:v?.playbackRate??1,danmaku:danmakuOn(),fullscreen:isPlayerFullscreen(),quality:readQuality(),playbackId}}
 function manage(value:boolean,original?:unknown){
   if(value&&!runtimeActive())return;
   const control=autoNextControl();
@@ -68,9 +74,9 @@ function requireBinding(params:Record<string,unknown>){
     releaseManualNavigation();throw new RemoteError('target_changed','电脑上已切换视频或停止遥控队列');
   }
 }
-async function waitVideo(params:Record<string,unknown>):Promise<HTMLVideoElement>{
+async function waitVideo(params?:Record<string,unknown>):Promise<HTMLVideoElement>{
   for(let i=0;i<100;i++){
-    requireBinding(params);
+    if(params)requireBinding(params);else requireRuntime();
     const error=visiblePlayerError();if(error)throw error;
     const v=video();if(v&&v.readyState>=1)return v;
     await new Promise(resolve=>setTimeout(resolve,200));
@@ -90,14 +96,15 @@ async function bind(params:Record<string,unknown>){
 }
 async function command(params:Record<string,unknown>){
   requireRuntime();
-  const action=String(params.action);if(action==='fullscreen'){await setPlayerFullscreen(Boolean(params.value),runtimeActive,params.wait===true?10000:0);fullscreenShown=isPlayerFullscreen();emit('player.changed',snapshot());return snapshot()}
+  const action=String(params.action);if(action.startsWith('list')){await siteAction(action,params.value,params.listId);return snapshot()}
+  if(action==='fullscreen'){await setPlayerFullscreen(Boolean(params.value),runtimeActive,params.wait===true?10000:0);fullscreenShown=isPlayerFullscreen();emit('player.changed',snapshot());return snapshot()}
   const v=video();if(!v)throw new RemoteError('no_player','请先选择一个视频');
   switch(action){
     case 'quality':{
       if(qualitySwitching)throw new RemoteError('quality_busy','清晰度正在切换，请稍候');
       if(typeof params.bvid!=='string'||!/^(?:BV[0-9A-Za-z]+|ep\d+)$/.test(params.bvid)||typeof params.part!=='number'||!Number.isInteger(params.part)||params.part<1)throw new RemoteError('invalid_request','缺少有效的视频信息，请重新选择清晰度');
       qualitySwitching=true;
-      try{await switchQuality(params.value,()=>runtimeActive()&&params.bvid===playerIdentity()&&params.part===partInfo().part)}finally{qualitySwitching=false}
+      try{await switchQuality(params.value,()=>runtimeActive()&&params.bvid===(playerIdentity()||currentBvid())&&params.part===playbackParts(managed?undefined:siteList()).part)}finally{qualitySwitching=false}
       break;
     }
     case 'play':try{await v.play()}catch{throw new RemoteError('autoplay_blocked','请先在电脑视频区域点击一次播放')}break;
@@ -121,13 +128,13 @@ function onMessage(message:any,_sender:chrome.runtime.MessageSender,respond:(res
   if(message.method==='player.related'){
     void readRelated(String(message.params?.bvid??'')).then(result=>reply({ok:true,result}),error=>reply({ok:false,error:{code:error.code??'extension_error',message:error.message}}));return true;
   }
-  void (async()=>{switch(message.method){case 'catalog.read':return readCatalog(message.params.kind);case 'catalog.page':await turnPage(message.params.page,message.params.kind);return readCatalog(message.params.kind);case 'catalog.openCollection':return openCollection(message.params.title,message.params.index);case 'player.bind':return bind(message.params);case 'player.attach':return attach(message.params);case 'player.manage':manage(Boolean(message.params.enabled));return snapshot();case 'player.command':return command(message.params);case 'player.state':return snapshot();default:throw new RemoteError('unknown_method','未知扩展操作')}})().then(result=>reply({ok:true,result}),error=>reply({ok:false,error:{code:error.code??'extension_error',message:error.message}}));
+  void (async()=>{switch(message.method){case 'catalog.read':return readCatalog(message.params.kind);case 'catalog.page':await turnPage(message.params.page,message.params.kind);return readCatalog(message.params.kind);case 'catalog.openCollection':return openCollection(message.params.title,message.params.index);case 'player.startSite':{const v=await waitVideo();if(v.paused)await command({action:'play'});return snapshot()}case 'player.bind':return bind(message.params);case 'player.attach':return attach(message.params);case 'player.manage':manage(Boolean(message.params.enabled));return snapshot();case 'player.command':return command(message.params);case 'player.state':return snapshot();default:throw new RemoteError('unknown_method','未知扩展操作')}})().then(result=>reply({ok:true,result}),error=>reply({ok:false,error:{code:error.code??'extension_error',message:error.message}}));
   return true;
 }
 function report(){
   if(!runtimeActive())return;
   releaseManualNavigation();
-  if(location.hostname!=='www.bilibili.com'||!/^\/(?:video\/|bangumi\/play\/)/.test(location.pathname))return;
+  if(location.hostname!=='www.bilibili.com'||!/^\/(?:video\/|list\/|bangumi\/play\/)/.test(location.pathname))return;
   // Leaving the player fullscreen here (Escape, the site's button) must also end the browser window fullscreen.
   const fullscreen=isPlayerFullscreen();if(fullscreenShown&&!fullscreen)emit('player.fullscreenExited');fullscreenShown=fullscreen;
   const v=video();if(v){if(managed)manage(true);emit('player.changed',snapshot());if(!v.ended)endedSent=false}

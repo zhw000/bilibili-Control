@@ -9,8 +9,9 @@ export function playerIdentity(root:ParentNode=document,url:string=location.href
 export function playerError(root:ParentNode=document,ended=false):RemoteError|undefined {
   if(ended&&[...root.querySelectorAll('[class*="PromptBar_subtitleText"]')].some(e=>/试看/.test(e.textContent??'')))
     return new RemoteError('access_required','试看已结束，本集需要大会员或购买，请在电脑 B 站网页确认观看权限');
-  const message=[...root.querySelectorAll('.error-panel,.bpx-player-error-message,.error-container,.bpx-player-ending-panel,.bpx-player-toast-item,.bpx-player-dialog')]
+  const message=[...root.querySelectorAll('.error-panel,.error-msg .error-text,.bpx-player-error-message,.error-container,.bpx-player-ending-panel,.bpx-player-toast-item,.bpx-player-dialog')]
     .filter(e=>!e.closest('[hidden],[style*="display: none"],[style*="display:none"]'))
+    .filter(e=>!(e.matches('.bpx-player-toast-item')&&/登录\s*免费享高清视频/.test(e.textContent??'')))
     .map(e=>e.textContent?.trim()??'').join(' ');
   if(!message)return undefined;
   if(/试看结束|大会员专享|开通大会员|购买本片|付费观看/.test(message))return new RemoteError('access_required','本集需要大会员或购买，请在电脑 B 站网页确认观看权限');

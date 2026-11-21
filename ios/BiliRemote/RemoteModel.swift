@@ -8,6 +8,7 @@ import SwiftUI
     @Published var connectionHint: String?
     @Published var selectedTab = AppTab.home
     @Published var pairing = false
+    @Published private(set) var openingList = false
     @Published private(set) var relatedVideos: [VideoItem] = []
     @Published private(set) var relatedLoading = false
     @Published private(set) var relatedError: String?
@@ -56,7 +57,7 @@ import SwiftUI
     var currentCover: String? { snapshot.player.cover ?? snapshot.queue.items.first(where: { $0.bvid == snapshot.player.bvid })?.cover }
     var showsPlaylist: Bool { snapshot.queue.isPlaylist(for: snapshot.player) }
     var visibleRelatedVideos: [VideoItem] { relatedBvid == snapshot.player.bvid ? relatedVideos : [] }
-    var relatedRequestKey: String { ready && !showsPlaylist && snapshot.player.bvid.hasPrefix("BV") ? snapshot.player.bvid : "" }
+    var relatedRequestKey: String { ready && snapshot.player.siteList == nil && !showsPlaylist && snapshot.player.bvid.hasPrefix("BV") ? snapshot.player.bvid : "" }
     func loadRelated() async {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-state") { return }
@@ -88,7 +89,8 @@ import SwiftUI
         }
     }
     func nextVideo() {
-        if showsPlaylist { execute("queue.next") }
+        if snapshot.player.siteList != nil { listAction("listNext") }
+        else if showsPlaylist { execute("queue.next") }
         else if let next = visibleRelatedVideos.first { play(next) }
     }
     func connect() { if let device, transport.status == .disconnected { transport.connect(device) } }
@@ -114,6 +116,24 @@ import SwiftUI
         let updated: PlayerState = try await transport.request("player.command", params: ["action": .string("quality"), "value": .string(id), "bvid": .string(bvid), "part": .number(Double(part))])
         guard snapshot.player.bvid == bvid, snapshot.player.part == part, updated.bvid == bvid, updated.part == part else { return }
         snapshot.player = updated
+    }
+    func openList(_ source: QueueSource, video: VideoItem? = nil) {
+        guard !openingList else { return }; openingList = true
+        Task {
+            defer { openingList = false }
+            do {
+                guard case .object(var params) = try JSONValue.from(source) else { return }
+                if let video { params["bvid"] = .string(video.bvid) }
+                let _: EmptyResponse = try await transport.request("list.open", params: params)
+                selectedTab = .player
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+    func listAction(_ action: String, value: JSONValue? = nil) {
+        guard let list = snapshot.player.siteList else { return }
+        var params: [String: JSONValue] = ["action": .string(action), "listId": .string(list.id)]
+        params["value"] = value
+        execute("player.command", params)
     }
     func control(_ action: String, value: JSONValue? = nil) { var params: [String: JSONValue] = ["action": .string(action)]; params["value"] = value; execute("player.command", params) }
 }

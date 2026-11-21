@@ -127,7 +127,9 @@ struct CreatorView: View {
             }.padding(.vertical, 8).listRowSeparator(.hidden)
             Picker("内容类型", selection: $category) { Text("全部投稿").tag("videos"); Text("合集和系列").tag("collections") }.pickerStyle(.segmented)
             if category == "videos" {
-                HStack { Picker("顺序", selection: $order) { Text("最新优先").tag("newest"); Text("最早优先").tag("oldest"); Text("最多播放").tag("popular") }; Spacer(); Button { model.startQueue(QueueSource(kind: "creator", creatorId: creator.id, order: order, keyword: keyword)) } label: { Label(keyword.isEmpty ? "全部播放" : "播放结果", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(!model.ready || videos.isEmpty || loading) }
+                HStack { Picker("顺序", selection: $order) { Text("最新优先").tag("newest"); Text("最早优先").tag("oldest"); Text("最多播放").tag("popular") }; Spacer(); Button { let source = QueueSource(kind: "creator", creatorId: creator.id, order: order, keyword: keyword)
+                    if keyword.isEmpty { model.openList(source) } else { model.startQueue(source) }
+                } label: { if model.openingList { ProgressView() } else { Label(keyword.isEmpty ? "全部播放" : "播放结果", systemImage: "play.fill") } }.buttonStyle(.borderedProminent).disabled(!model.ready || model.openingList || videos.isEmpty || loading) }
                 ForEach(videos) { VideoRow(video: $0) }
             } else {
                 ForEach(collections) { collection in NavigationLink { CollectionView(collection: collection) } label: { HStack { CoverView(url: collection.cover).frame(width: 110, height: 70).clipShape(RoundedRectangle(cornerRadius: 10)); VStack(alignment: .leading, spacing: 5) { Text(collection.title).font(.headline); if let count = collection.count { Text("\(count) 个视频").font(.caption).foregroundStyle(.secondary) } } }.padding(.vertical, 5) } }
@@ -175,8 +177,8 @@ struct CollectionView: View {
     @State private var failure: String?
     var body: some View {
         List {
-            VStack(alignment: .leading, spacing: 15) { Text(collection.title).font(.title2.bold()); Button { model.startQueue(QueueSource(kind: "collection", url: collection.url)) } label: { Label("全部播放", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(!model.ready) }.padding(.vertical, 10)
-            ForEach(videos) { VideoRow(video: $0) }
+            VStack(alignment: .leading, spacing: 15) { Text(collection.title).font(.title2.bold()); Button { model.openList(QueueSource(kind: "collection", url: collection.url)) } label: { if model.openingList { ProgressView() } else { Label("全部播放", systemImage: "play.fill") } }.buttonStyle(.borderedProminent).disabled(!model.ready || model.openingList) }.padding(.vertical, 10)
+            ForEach(videos) { video in VideoRow(video: video, onPlay: { model.openList(QueueSource(kind: "collection", url: collection.url), video: video) }) }
             if let failure { Text(failure).foregroundStyle(.secondary); Button("重新加载") { Task { await load(reset: true) } } }
             if loading { ProgressView("读取合集…") }
             if !loading && failure == nil && videos.isEmpty { ContentUnavailableView("合集还没有视频", systemImage: "tray") }

@@ -71,10 +71,11 @@ struct MiniPlayer: View {
 }
 struct VideoRow: View {
     let video: VideoItem
+    var onPlay: (() -> Void)? = nil
     @EnvironmentObject private var model: RemoteModel
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Button { model.play(video) } label: {
+            Button { if let onPlay { onPlay() } else { model.play(video) } } label: {
                 HStack(alignment: .top, spacing: 12) {
                     CoverView(url: video.cover).frame(width: 112, height: 63).clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(alignment: .bottomTrailing) { if let duration = video.duration { Text(Timecode.format(duration)).font(.caption2.monospacedDigit()).padding(4).background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 4)).foregroundStyle(.white).padding(5) } }

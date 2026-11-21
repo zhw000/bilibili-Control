@@ -35,7 +35,7 @@ public sealed record QueueSource(string Kind, string? CreatorId = null, string? 
 public sealed record QueueSnapshot(QueueSource? Source, IReadOnlyList<VideoItem> Items, int Index, int? NextPage, bool Active, bool CanResume, string? Message, string? PlaybackId);
 public sealed record VideoQualityOption(string Id, string Label, string? Badge = null, bool Disabled = false);
 public sealed record PlaybackQuality(IReadOnlyList<VideoQualityOption> Options, string? CurrentId = null, string? CurrentLabel = null, int? Width = null, int? Height = null);
-public sealed record PlayerState(string Bvid = "", string Title = "", string Url = "", double CurrentTime = 0, double Duration = 0, bool Paused = true, bool Ended = false, int Part = 1, int PartCount = 1, double Volume = 1, bool Muted = false, double Rate = 1, bool Danmaku = true, bool Fullscreen = false, string? PlaybackId = null, string? ErrorCode = null, string? ErrorMessage = null, string? Cover = null, PlaybackQuality? Quality = null);
+public sealed record PlayerState(string Bvid = "", string Title = "", string Url = "", double CurrentTime = 0, double Duration = 0, bool Paused = true, bool Ended = false, int Part = 1, int PartCount = 1, double Volume = 1, bool Muted = false, double Rate = 1, bool Danmaku = true, bool Fullscreen = false, string? PlaybackId = null, string? ErrorCode = null, string? ErrorMessage = null, string? Cover = null, PlaybackQuality? Quality = null, JsonElement? SiteList = null);
 public sealed record SystemVolume(double Value, bool Muted, string DeviceName, bool Available = true);
 
 public static class Validation

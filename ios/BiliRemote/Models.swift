@@ -62,6 +62,20 @@ struct PlayerState: Codable {
     var playbackId: String?, errorCode: String?, errorMessage: String?
     var cover: String?
     var quality: PlaybackQuality?
+    var siteList: SiteList?
+}
+struct SiteList: Codable {
+    struct Item: Codable, Identifiable {
+        let bvid: String, title: String, duration: String
+        var id: String { bvid }
+    }
+    let id: String, title: String, order: String, mode: String
+    struct Section: Codable, Identifiable { let id: String, title: String }
+    let autoNext: Bool?
+    let sections: [Section], section: String, description: String, subscribe: String
+    let position: Int, total: Int, part: Int
+    let before: Bool, after: Bool, previous: Bool, next: Bool
+    let parts: [String], items: [Item]
 }
 struct RelatedVideos: Decodable { let bvid: String; let items: [VideoItem] }
 extension QueueSnapshot {

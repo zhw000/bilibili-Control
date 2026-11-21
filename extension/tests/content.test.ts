@@ -23,6 +23,20 @@ beforeEach(async()=>{
 });
 afterEach(()=>{listeners.splice(0).forEach(remove=>remove());vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals()});
 
+it('keeps native list progress and leaves the ended event with the site',async()=>{
+  history.replaceState({},'','/list/123/?sid=42');
+  document.body.insertAdjacentHTML('beforeend','<div class="bpx-player-toast-item">登录 免费享高清视频试看30秒</div><h1><a class="video-title-href" href="/video/BV7">Seven</a></h1><div class="action-list-container"><div class="list-count">7/10</div></div>');
+  const media=document.querySelector('video')!;
+  Object.defineProperty(media,'readyState',{value:3});media.currentTime=12;
+  const reply=await request('player.startSite');
+  expect(reply.result).toMatchObject({bvid:'BV7',currentTime:12,siteList:{position:7,total:10}});
+  const ended=vi.fn();media.addEventListener('ended',ended);media.dispatchEvent(new Event('ended'));
+  expect(ended).toHaveBeenCalledOnce();
+  expect(emit.mock.calls.some(([event])=>event.event==='player.ended')).toBe(false);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(emit).toHaveBeenCalledWith(expect.objectContaining({event:'player.changed',data:expect.objectContaining({bvid:'BV7'})}));
+});
+
 it('leaves manual playback and auto-start untouched on load and periodic reports',async()=>{
   await vi.advanceTimersByTimeAsync(3000);
   expect(play).not.toHaveBeenCalled();expect(pause).not.toHaveBeenCalled();

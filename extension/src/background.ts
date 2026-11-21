@@ -3,6 +3,8 @@ import {community,relatedCovers} from './community';
 import {homeFeed} from './feed';
 import {videoLocation} from './player-dom';
 
+import {collectionRoute,playlistUrl} from './site-list';
+
 const HOST='com.biliremote.bridge';
 let port:chrome.runtime.Port|undefined,targetId:number|undefined,catalogId:number|undefined,managed=false;
 let currentBinding:Record<string,unknown>|undefined;
@@ -73,7 +75,10 @@ function serializedCatalog(job:()=>Promise<unknown>){const result=catalogSerial.
 async function collectionUrl(value:string):Promise<string>{
   if(!urlAllowed(value))throw new RemoteError('invalid_url','合集地址无效');
   const cached=collectionRoutes.get(value);if(cached)return cached;
-  const url=new URL(value),title=url.searchParams.get('biliremoteCollection');if(!title)return value;
+  const url=new URL(value),title=url.searchParams.get('biliremoteCollection');if(!title){
+    const route=collectionRoute(value);
+    return `https://space.bilibili.com/${route.mid}/lists/${route.id}?type=${route.series?'series':'season'}`;
+  }
   const mid=url.pathname.match(/^\/(\d+)\/lists$/)?.[1];if(!mid)throw new RemoteError('invalid_url','合集来源无效');
   const page=bounded(Number(url.searchParams.get('biliremotePage')),1,10000),index=bounded(Number(url.searchParams.get('biliremoteIndex')),0,1000);
   await catalog(`https://space.bilibili.com/${mid}/lists`,'collections',page);
@@ -84,6 +89,27 @@ async function collectionUrl(value:string):Promise<string>{
     await new Promise(resolve=>setTimeout(resolve,200));
   }
   throw new RemoteError('collection_changed','合集没有成功打开，请刷新 UP 主主页后重试');
+}
+async function openList(params:Record<string,unknown>){
+  const selected=params.bvid;
+  if(selected!==undefined&&(typeof selected!=='string'||!/^BV[0-9A-Za-z]+$/.test(selected)))throw new RemoteError('invalid_video','视频编号无效');
+  let url:string;
+  if(params.kind==='creator')url=playlistUrl(params.creatorId,undefined,params.order,selected);
+  else if(params.kind==='collection'){
+    const route=await collectionUrl(String(params.url??''));
+    const {mid,id,series}=collectionRoute(route);
+    if(series)url=playlistUrl(mid,id,undefined,selected);
+    else {
+      const first=selected??((await catalog(route,'videos',1)).items[0] as {bvid?:string}|undefined)?.bvid;
+      if(!first)throw new RemoteError('empty_queue','这个合集还没有可播放的视频');
+      url='https://www.bilibili.com/video/'+first+'/';
+    }
+  }else throw new RemoteError('invalid_request','列表来源无效');
+  const id=await target();
+  currentBinding=undefined;managed=false;originalAutoNext=undefined;await remember();
+  await navigation(id,url);
+  if(id!==targetId||currentBinding)throw new RemoteError('target_changed','播放标签页已切换');
+  return content(id,'player.startSite');
 }
 async function openVideo(params:Record<string,unknown>){
   const video=params.video as {url?:string;bvid?:string}|undefined;
@@ -110,6 +136,7 @@ async function handle(req:Request):Promise<unknown>{
     case 'home.feed':return homeFeed(p);
     case 'creator.collections':return serializedCatalog(()=>catalog(`https://space.bilibili.com/${numericId(p.creatorId)}/lists`,'collections',Math.floor(bounded(p.page??1,1,10000))));
     case 'collection.videos':return serializedCatalog(async()=>catalog(await collectionUrl(String(p.url??'')),'videos',Math.floor(bounded(p.page??1,1,10000))));
+    case 'list.open':return serializedCatalog(()=>openList(p));
     case 'player.open':return openVideo(p);
     case 'player.related':{
       const id=targetId;

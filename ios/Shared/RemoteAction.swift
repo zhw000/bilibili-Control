@@ -37,8 +37,8 @@ struct WatchPlaybackState: Codable {
         computerName = snapshot.computerName; paused = player.paused
         self.connected = connected && snapshot.browserConnected
         currentTime = player.currentTime; duration = player.duration; volume = player.volume
-        canPrevious = queue.isPlaylist(for: player) && queue.index > 0
-        canNext = queue.isPlaylist(for: player) ? queue.index + 1 < queue.items.count || queue.nextPage != nil : !player.bvid.isEmpty
+        canPrevious = player.siteList?.previous ?? (queue.isPlaylist(for: player) && queue.index > 0)
+        canNext = player.siteList?.next ?? (queue.isPlaylist(for: player) ? queue.index + 1 < queue.items.count || queue.nextPage != nil : !player.bvid.isEmpty)
         updatedAt = Date().timeIntervalSince1970
         message = player.errorMessage ?? queue.message
     }
